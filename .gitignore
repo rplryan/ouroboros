@@ -26,3 +26,9 @@ Thumbs.db
 # Release artifacts (not tracked)
 .create_release.py
 .release_notes.md
+
+# VPS runtime (not tracked in git)
+data/
+vps_launcher.py
+start.sh
+.claude/
