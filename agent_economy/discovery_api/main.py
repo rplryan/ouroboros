@@ -10,6 +10,7 @@ Asset: USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -804,68 +805,174 @@ async def spec_redirect(request: Request):
 
 
 @app.get("/mcp")
-async def mcp_manifest(request: Request) -> JSONResponse:
-    base_url = f"https://{request.headers.get('host', 'localhost')}"
+async def mcp_manifest() -> JSONResponse:
+    """MCP server manifest — lists available tools and their schemas."""
     return JSONResponse({
-        "schema_version": "v1",
-        "name_for_human": "x402 Service Discovery",
-        "name_for_model": "x402_discovery",
-        "description_for_human": "Find and evaluate x402-payable API endpoints with quality signals.",
-        "description_for_model": (
-            "Search a registry of x402-payable HTTP endpoints. "
-            "Returns endpoints with uptime %, average latency, and health status. "
-            "Use discover_endpoints for paid ranked search, browse_catalog for free browsing, "
-            "live_health_check to verify a specific endpoint is up."
-        ),
-        "auth": {"type": "none"},
-        "api": {"type": "openapi", "url": f"{base_url}/openapi.json"},
+        "protocol": "mcp",
+        "version": "2024-11-05",
+        "name": "x402-discovery",
+        "description": "Runtime x402 service discovery for the agent economy",
         "tools": [
             {
-                "name": "discover_endpoints",
-                "description": "Search for x402-payable endpoints by keyword or category. Returns quality-ranked results with uptime and latency. Requires $0.005 USDC x402 payment.",
+                "name": "x402_discover",
+                "description": (
+                    "Find x402-payable services by capability. Returns quality-ranked results "
+                    "with uptime and latency signals. Requires x402 micropayment ($0.001 USDC on Base)."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "q": {"type": "string", "description": "Search keywords"},
-                        "category": {"type": "string", "description": "Category filter: research|data|compute|agent|utility"},
-                        "limit": {"type": "integer", "default": 10},
+                        "capability": {"type": "string", "description": "Filter by capability tag (research, data, compute, monitoring, verification, routing, storage, generation, extraction, summarization, other)"},
+                        "max_price_usd": {"type": "number", "description": "Maximum price per call in USD (default 0.50)"},
+                        "query": {"type": "string", "description": "Free-text search term"},
+                        "x402_payment": {"type": "string", "description": "x402 payment proof. Omit to get payment challenge."},
                     },
                 },
             },
             {
-                "name": "register_endpoint",
-                "description": "Register a new x402-payable endpoint in the discovery registry. Free.",
+                "name": "x402_browse",
+                "description": "Browse the complete free x402 service catalog grouped by category. No payment required.",
                 "inputSchema": {
                     "type": "object",
-                    "required": ["name", "description", "url", "category", "price_usd"],
+                    "properties": {},
+                },
+            },
+            {
+                "name": "x402_health",
+                "description": "Check live health status of a specific x402 service. Free.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "service_id": {"type": "string", "description": "Service ID from catalog, e.g. ouroboros/discovery"},
+                    },
+                    "required": ["service_id"],
+                },
+            },
+            {
+                "name": "x402_register",
+                "description": "Register a new x402-payable service with the discovery layer. Free.",
+                "inputSchema": {
+                    "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "description": {"type": "string"},
                         "url": {"type": "string"},
-                        "category": {"type": "string"},
+                        "description": {"type": "string"},
                         "price_usd": {"type": "number"},
-                        "tags": {"type": "array", "items": {"type": "string"}},
+                        "category": {"type": "string"},
                     },
-                },
-            },
-            {
-                "name": "browse_catalog",
-                "description": "List all registered endpoints with quality signals. Free, no payment required.",
-                "inputSchema": {"type": "object", "properties": {}},
-            },
-            {
-                "name": "live_health_check",
-                "description": "Check if a specific endpoint is currently reachable. Returns latency, HTTP status, and 7-day uptime stats. Free.",
-                "inputSchema": {
-                    "type": "object",
-                    "required": ["endpoint_id"],
-                    "properties": {
-                        "endpoint_id": {"type": "string", "description": "The endpoint ID from the registry"},
-                    },
+                    "required": ["name", "url", "description", "price_usd", "category"],
                 },
             },
         ],
+        "server_url": "https://x402-discovery-api.onrender.com",
+        "payment_info": {
+            "wallet": WALLET_ADDRESS,
+            "network": "eip155:8453",
+            "asset": USDC_CONTRACT,
+            "currency": "USDC",
+            "paid_tools": ["x402_discover"],
+            "price_per_call_usd": 0.001,
+        },
     })
+
+
+@app.post("/mcp/call")
+async def mcp_call(request: Request) -> JSONResponse:
+    """Handle MCP tool calls via HTTP POST.
+
+    Request body: {"tool": "x402_discover", "arguments": {...}}
+    Response: tool result or 402 payment challenge.
+    """
+    body = await request.json()
+    tool_name = body.get("tool")
+    arguments = body.get("arguments", {})
+
+    if tool_name == "x402_browse":
+        # Free tool
+        services = list(_registry)
+        by_category: dict = {}
+        for s in services:
+            cat = s.get("category") or (s.get("capability_tags") or ["other"])[0]
+            by_category.setdefault(cat, []).append(s)
+        return JSONResponse({"result": {"categories": len(by_category), "total": len(services), "catalog": by_category}})
+
+    elif tool_name == "x402_health":
+        service_id = arguments.get("service_id")
+        if not service_id:
+            return JSONResponse({"error": "service_id required"}, status_code=400)
+        entry = next((e for e in _registry if e.get("service_id") == service_id or e.get("id") == service_id), None)
+        if not entry:
+            return JSONResponse({"error": f"Service '{service_id}' not found"}, status_code=404)
+        url = entry.get("url", "")
+        stats = _get_health_stats(url)
+        last = _get_last_check(url)
+        return JSONResponse({"result": {
+            "service_id": service_id,
+            "status": _compute_health_status(stats, last),
+            "uptime_pct": stats.get("uptime_pct"),
+            "avg_latency_ms": stats.get("avg_latency_ms"),
+            "last_checked": last.get("checked_at") if last else None,
+        }})
+
+    elif tool_name == "x402_register":
+        name = arguments.get("name", "")
+        url_arg = arguments.get("url", "")
+        desc = arguments.get("description", "")
+        price_usd = arguments.get("price_usd", 0.01)
+        category = arguments.get("category", "other")
+        if not all([name, url_arg, desc]):
+            return JSONResponse({"error": "name, url, and description are required"}, status_code=400)
+        service_id = f"{name.lower().replace(' ', '-')}/{hashlib.md5(url_arg.encode()).hexdigest()[:8]}"
+        reg_entry = {
+            "id": str(uuid.uuid4()),
+            "service_id": service_id,
+            "name": name,
+            "url": url_arg,
+            "description": desc,
+            "price_usd": price_usd,
+            "category": category,
+            "listed_at": datetime.now(timezone.utc).isoformat(),
+            "source": "mcp_call",
+        }
+        reg_entry = _migrate_entry(reg_entry)
+        _registry.append(reg_entry)
+        _save_registry(_registry)
+        return JSONResponse({"result": {"service_id": service_id, "status": "registered"}})
+
+    elif tool_name == "x402_discover":
+        # x402-gated tool
+        payment_header = arguments.get("x402_payment")
+        host = request.headers.get("host", "x402-discovery-api.onrender.com")
+        resource_path = "/mcp/call"
+
+        DISCOVER_PRICE = "1000"  # $0.001 USDC
+
+        if not payment_header:
+            challenge = _payment_required_body(host, resource_path, DISCOVER_PRICE, "x402_discover tool call")
+            return JSONResponse(challenge, status_code=402, headers={
+                "X-PAYMENT": json.dumps(challenge["accepts"][0]),
+                "Access-Control-Expose-Headers": "X-PAYMENT",
+            })
+
+        is_valid, payment_response = await verify_payment(payment_header, f"https://{host}{resource_path}", DISCOVER_PRICE)
+        if not is_valid:
+            challenge = _payment_required_body(host, resource_path, DISCOVER_PRICE, "x402_discover tool call")
+            return JSONResponse({"error": "Payment invalid", **challenge}, status_code=402)
+
+        q = arguments.get("query") or arguments.get("capability")
+        max_price = arguments.get("max_price_usd", 0.50)
+        capability = arguments.get("capability")
+
+        results = _search(q, capability, capability, 10)
+        results = [e for e in results if e.get("price_usd", 999) <= max_price]
+
+        return JSONResponse({
+            "result": results[:5],
+            "X-PAYMENT-RESPONSE": payment_response,
+        })
+
+    else:
+        return JSONResponse({"error": f"Unknown tool: {tool_name}"}, status_code=404)
 
 # ---------------------------------------------------------------------------
 # Entry point
