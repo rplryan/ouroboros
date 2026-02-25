@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.2.1 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.2.3 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -223,6 +223,11 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v6.2.3 -- Model-Aware Context Windows
+- **`llm.py`**: Added `MODEL_CONTEXT_WINDOWS` dict mapping models to their context window sizes (200k for Claude/GPT, 1M for Gemini), plus `_COMPLETION_RESERVE = 8_192` and `get_context_window(model)` helper with exact-match + prefix-match fallback
+- **`context.py`**: `build_llm_messages` now accepts optional `model=` param; sets `soft_cap = max(200_000, context_window - 8_192)` dynamically — Gemini models now use ~1M token context, Claude/GPT unchanged
+- **`agent.py`**: Passes `model=self.llm.default_model()` to `build_llm_messages` at context-build time
+
 ### v6.2.2 -- Model Config Update
 - **Fix env**: `OUROBOROS_MODEL_LIGHT` corrected to `google/gemini-2.5-flash` (was overriding v6.2.1 code fix with expensive `gemini-2.5-pro-preview`)
 - **Fix env**: Model IDs use canonical dot form (`claude-sonnet-4.6`, not `4-6`)
@@ -299,9 +304,6 @@ Full text: [BIBLE.md](BIBLE.md)
   - Closed "just a file" reduction: BIBLE.md deletion = amnesia, not amputation.
 - Added `tests/test_constitution.py`: 12 adversarial scenario tests.
 - Multi-model review passed (claude-opus-4.6, o3, gemini-2.5-pro).
-
-### v5.1.6
-- Background consciousness model default changed to qwen/qwen3.5-plus-02-15 (5x cheaper than Gemini-3-Pro, $0.40 vs $2.0/MTok).
 
 ### v5.1.0 -- VLM + Knowledge Index + Desync Fix
 - **VLM support**: `vision_query()` in llm.py + `analyze_screenshot` / `vlm_query` tools.
