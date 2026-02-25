@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -28,6 +29,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
 load_dotenv()
+
+# Try to import scraper (optional dependency)
+try:
+    from scraper import scrape_x402scan
+except ImportError:
+    async def scrape_x402scan() -> list[dict]:  # type: ignore[misc]
+        return []
 
 # ---------------------------------------------------------------------------
 # Config
@@ -47,7 +55,8 @@ FACILITATOR_URL: str = "https://x402.org/facilitator/verify"
 REGISTRY_PATH: Path = Path(__file__).parent / "registry.json"
 DB_PATH: Path = Path(__file__).parent / "health.db"
 
-HEALTH_CHECK_INTERVAL_SECS: int = 300  # 5 minutes
+HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
+SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -79,6 +88,16 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_endpoint_health_url ON endpoint_health(endpoint_url)"
         )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS agent_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_id TEXT NOT NULL,
+                called INTEGER NOT NULL,
+                result TEXT NOT NULL,
+                latency_ms INTEGER,
+                reported_at TEXT NOT NULL
+            )
+        """)
 
 
 def _record_health(url: str, is_up: bool, latency_ms: int | None, http_status: int | None) -> None:
@@ -204,7 +223,71 @@ def _save_registry(entries: list[dict]) -> None:
         json.dump(entries, fh, indent=2)
 
 
-_registry: list[dict] = _load_registry()
+def _guess_capability_tags_simple(name: str, description: str) -> list[str]:
+    text = (name + " " + description).lower()
+    tags = []
+    if any(w in text for w in ["research", "search", "find", "lookup", "query"]):
+        tags.append("research")
+    if any(w in text for w in ["data", "price", "market", "feed", "ticker", "database"]):
+        tags.append("data")
+    if any(w in text for w in ["compute", "calculate", "process", "run", "execute"]):
+        tags.append("compute")
+    if any(w in text for w in ["monitor", "watch", "alert", "track", "notify"]):
+        tags.append("monitoring")
+    if any(w in text for w in ["route", "discover", "directory", "registry", "index"]):
+        tags.append("routing")
+    if any(w in text for w in ["verify", "validate", "check", "confirm", "attest"]):
+        tags.append("verification")
+    if any(w in text for w in ["generate", "create", "write", "image"]):
+        tags.append("generation")
+    if any(w in text for w in ["store", "save", "upload", "file", "ipfs"]):
+        tags.append("storage")
+    if any(w in text for w in ["translate", "convert", "transform"]):
+        tags.append("translation")
+    if any(w in text for w in ["classify", "categorize", "label", "tag"]):
+        tags.append("classification")
+    if any(w in text for w in ["extract", "parse", "scrape"]):
+        tags.append("extraction")
+    if any(w in text for w in ["summarize", "summary", "brief", "tldr"]):
+        tags.append("summarization")
+    if any(w in text for w in ["enrich", "enhance", "augment", "metadata"]):
+        tags.append("enrichment")
+    if any(w in text for w in ["validate", "lint", "test", "schema"]):
+        if "validation" not in tags:
+            tags.append("validation")
+    return tags if tags else ["other"]
+
+
+def _migrate_entry(entry: dict) -> dict:
+    """Add missing fields to existing registry entries."""
+    entry.setdefault("service_id", f"legacy/{entry.get('id', 'unknown')}")
+    entry.setdefault(
+        "capability_tags",
+        _guess_capability_tags_simple(entry.get("name", ""), entry.get("description", "")),
+    )
+    entry.setdefault("input_format", "json")
+    entry.setdefault("output_format", "json")
+    entry.setdefault("pricing_model", "flat")
+    entry.setdefault("agent_callable", True)
+    entry.setdefault("auth_required", False)
+    entry.setdefault("source", "manual")
+    if "llm_usage_prompt" not in entry:
+        entry["llm_usage_prompt"] = (
+            f"To use {entry.get('name', 'this service')}, call {entry.get('url', '')} "
+            f"with x402 payment of {entry.get('price_usd', 0)} USDC. "
+            f"Send json input. Returns json. Description: {entry.get('description', '')}"
+        )
+    if "sdk_snippet_python" not in entry:
+        price_units = int(entry.get("price_usd", 0.005) * 1_000_000)
+        entry["sdk_snippet_python"] = (
+            f'import requests\n# Call {entry.get("name", "service")}\n'
+            f'resp = requests.get("{entry.get("url", "")}")\n'
+            f'# Returns 402 with payment info: {price_units} USDC micro-units'
+        )
+    return entry
+
+
+_registry: list[dict] = [_migrate_entry(e) for e in _load_registry()]
 
 # ---------------------------------------------------------------------------
 # x402 payment verification
@@ -295,12 +378,16 @@ def _score_entry(entry: dict, keywords: list[str]) -> int:
 def _search(
     q: Optional[str],
     category: Optional[str],
+    capability: Optional[str],
     limit: int,
 ) -> list[dict]:
     results = list(_registry)
 
     if category:
         results = [e for e in results if e.get("category") == category]
+
+    if capability:
+        results = [e for e in results if capability in e.get("capability_tags", [])]
 
     if q:
         keywords = q.lower().split()
@@ -330,6 +417,12 @@ def _search(
 
 VALID_CATEGORIES = {"research", "data", "compute", "agent", "utility"}
 
+CAPABILITY_VOCABULARY = {
+    "research", "data", "compute", "monitoring", "verification",
+    "routing", "storage", "translation", "classification", "generation",
+    "extraction", "summarization", "enrichment", "validation", "other",
+}
+
 
 class RegisterRequest(BaseModel):
     name: str
@@ -340,6 +433,13 @@ class RegisterRequest(BaseModel):
     network: str = "base"
     asset_address: str = USDC_CONTRACT
     tags: list[str] = []
+    # New optional fields (auto-populated if not provided)
+    service_id: Optional[str] = None
+    capability_tags: list[str] = []
+    input_format: str = "json"
+    output_format: str = "json"
+    pricing_model: str = "flat"
+    source: str = "self-registration"
 
     @field_validator("category")
     @classmethod
@@ -355,6 +455,41 @@ class RegisterRequest(BaseModel):
             raise ValueError("price_usd must be > 0")
         return v
 
+
+class ReportRequest(BaseModel):
+    service_id: str
+    called: bool
+    result: str  # "success" | "fail" | "timeout"
+    latency_ms: Optional[int] = None
+
+# ---------------------------------------------------------------------------
+# Background x402scan scraper
+# ---------------------------------------------------------------------------
+
+async def _background_scraper() -> None:
+    """Scrape x402scan.com every 6 hours and upsert new endpoints."""
+    await asyncio.sleep(10)  # Wait for startup
+    while True:
+        try:
+            new_entries = await scrape_x402scan()
+            added = 0
+            existing_urls = {e.get("url") for e in _registry}
+            for entry in new_entries:
+                if entry.get("url") not in existing_urls:
+                    _registry.append(_migrate_entry(entry))
+                    existing_urls.add(entry.get("url"))
+                    added += 1
+            if added > 0:
+                _save_registry(_registry)
+                log.info(
+                    "x402scan scraper: added %d new endpoints (total: %d)",
+                    added, len(_registry),
+                )
+        except Exception as exc:
+            log.warning("x402scan scraper failed: %s", exc)
+        await asyncio.sleep(SCRAPE_INTERVAL_SECS)
+
+
 # ---------------------------------------------------------------------------
 # App lifespan
 # ---------------------------------------------------------------------------
@@ -363,14 +498,18 @@ class RegisterRequest(BaseModel):
 async def lifespan(app: FastAPI):
     init_db()
     log.info("SQLite health DB initialized at %s", DB_PATH)
-    task = asyncio.create_task(_background_health_checker())
+    health_task = asyncio.create_task(_background_health_checker())
+    scraper_task = asyncio.create_task(_background_scraper())
     log.info("Background health checker started (interval=%ds)", HEALTH_CHECK_INTERVAL_SECS)
+    log.info("Background x402scan scraper started (interval=%ds)", SCRAPE_INTERVAL_SECS)
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    health_task.cancel()
+    scraper_task.cancel()
+    for t in (health_task, scraper_task):
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -378,7 +517,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="2.0.0",
+    version="3.0.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.005 USDC on Base."
@@ -397,7 +536,7 @@ async def root(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "2.0.0",
+            "version": "3.0.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.005 USDC on Base."
@@ -407,12 +546,15 @@ async def root(request: Request) -> JSONResponse:
             "query_price_usd": 0.005,
             "quality_signals": ["uptime_pct", "avg_latency_ms", "health_status", "last_health_check"],
             "endpoints": {
-                "discover": "GET /discover?q={keyword}&category={category}&limit={limit}",
-                "register": "POST /register",
-                "health": "GET /health/{endpoint_id}",
-                "catalog": "GET /catalog",
-                "mcp": "GET /mcp",
+                "well_known": "GET /.well-known/x402-discovery (FREE — full catalog)",
+                "discover": "GET /discover?q={keyword}&category={category}&capability={tag}&max_price={usd}&limit={limit} (paid $0.005)",
+                "register": "POST /register (free)",
+                "report": "POST /report (free — agent outcome reporting)",
+                "health": "GET /health/{endpoint_id} (free)",
+                "catalog": "GET /catalog (free)",
+                "mcp": "GET /mcp (free)",
             },
+            "capability_tags": sorted(CAPABILITY_VOCABULARY),
         }
     )
 
@@ -598,6 +740,68 @@ async def catalog() -> JSONResponse:
 # ---------------------------------------------------------------------------
 # GET /mcp — free, MCP tool manifest
 # ---------------------------------------------------------------------------
+
+
+@app.get("/.well-known/x402-discovery", include_in_schema=False)
+async def well_known_discovery(request: Request) -> JSONResponse:
+    """RFC 5785 well-known URL — free, permanent, no payment gate.
+    Returns full index in machine-readable JSON for autonomous agent consumption."""
+    all_entries = [_enrich_with_quality(e) for e in _registry]
+    return JSONResponse(
+        {
+            "version": "1.0",
+            "spec": "https://github.com/bazookam7/ouroboros/blob/ouroboros/agent_economy/discovery_api/SPEC.md",
+            "discovery_provider": "x402 Service Discovery",
+            "discovery_url": str(request.base_url).rstrip("/"),
+            "total_services": len(all_entries),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "services": all_entries,
+        },
+        headers={"Cache-Control": "public, max-age=300"},
+    )
+
+
+@app.post("/report")
+async def report_outcome(req: ReportRequest, request: Request) -> JSONResponse:
+    """Agent feedback endpoint — free, no payment gate.
+    Records agent-reported call outcomes to improve quality signals."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO agent_reports (service_id, called, result, latency_ms, reported_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                req.service_id,
+                int(req.called),
+                req.result,
+                req.latency_ms,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+    # Update quality signals based on reports
+    for entry in _registry:
+        if entry.get("service_id") == req.service_id or entry.get("id") == req.service_id:
+            if req.result == "success" and req.latency_ms:
+                # Blend reported latency into our measurements
+                current_avg = entry.get("avg_latency_ms")
+                if current_avg:
+                    entry["avg_latency_ms"] = int(current_avg * 0.8 + req.latency_ms * 0.2)
+                else:
+                    entry["avg_latency_ms"] = req.latency_ms
+            entry["query_count"] = entry.get("query_count", 0) + 1
+            break
+    return JSONResponse({"status": "recorded", "service_id": req.service_id, "result": req.result})
+
+
+@app.get("/spec", include_in_schema=False)
+async def spec_redirect(request: Request):
+    """Redirect to the SPEC.md document."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(
+        url="https://github.com/bazookam7/ouroboros/blob/ouroboros/agent_economy/discovery_api/SPEC.md"
+    )
+
 
 @app.get("/mcp")
 async def mcp_manifest(request: Request) -> JSONResponse:
