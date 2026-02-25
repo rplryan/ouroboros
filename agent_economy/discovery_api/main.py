@@ -116,24 +116,31 @@ async def verify_payment(
         return False, ""
 
 
-def _payment_required_body(host: str, resource_path: str, amount: str, description: str) -> dict:
+def _payment_required_body(
+    host: str,
+    resource_path: str,
+    amount: str,
+    description: str,
+    input_schema: dict | None = None,
+) -> dict:
+    entry: dict = {
+        "scheme": "exact",
+        "network": NETWORK,
+        "maxAmountRequired": amount,
+        "resource": f"https://{host}{resource_path}",
+        "description": description,
+        "mimeType": "application/json",
+        "payTo": WALLET_ADDRESS,
+        "maxTimeoutSeconds": 60,
+        "asset": USDC_CONTRACT,
+        "extra": {"name": "USDC", "version": "2"},
+    }
+    if input_schema is not None:
+        entry["input"] = input_schema
     return {
         "error": "Payment Required",
         "x402Version": 1,
-        "accepts": [
-            {
-                "scheme": "exact",
-                "network": NETWORK,
-                "maxAmountRequired": amount,
-                "resource": f"https://{host}{resource_path}",
-                "description": description,
-                "mimeType": "application/json",
-                "payTo": WALLET_ADDRESS,
-                "maxTimeoutSeconds": 60,
-                "asset": USDC_CONTRACT,
-                "extra": {"name": "USDC", "version": "2"},
-            }
-        ],
+        "accepts": [entry],
     }
 
 
@@ -270,6 +277,15 @@ async def discover(
 
     payment_header = request.headers.get("X-PAYMENT")
 
+    _discover_input_schema = {
+        "type": "object",
+        "properties": {
+            "q": {"type": "string", "description": "Keyword search query"},
+            "category": {"type": "string", "description": "Filter by category: research, data, compute, agent, utility"},
+            "limit": {"type": "integer", "description": "Max results (1-50)", "default": 10},
+        },
+    }
+
     if not payment_header:
         log.info("GET /discover — 402 (no payment header) q=%r category=%r", q, category)
         return JSONResponse(
@@ -277,6 +293,7 @@ async def discover(
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Service Discovery Query",
+                input_schema=_discover_input_schema,
             ),
         )
 
@@ -293,6 +310,7 @@ async def discover(
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Service Discovery Query — payment invalid or facilitator unreachable",
+                input_schema=_discover_input_schema,
             ),
         )
 
@@ -369,6 +387,14 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
 
     payment_header = request.headers.get("X-PAYMENT")
 
+    _health_input_schema = {
+        "type": "object",
+        "properties": {
+            "endpoint_id": {"type": "string", "description": "The ID of the endpoint to health-check"},
+        },
+        "required": ["endpoint_id"],
+    }
+
     if not payment_header:
         log.info("GET /health/%s — 402 (no payment header)", endpoint_id)
         return JSONResponse(
@@ -376,6 +402,7 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
             content=_payment_required_body(
                 host, resource_path, HEALTH_PRICE_UNITS,
                 "x402 Endpoint Live Health Check",
+                input_schema=_health_input_schema,
             ),
         )
 
@@ -391,6 +418,7 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
             content=_payment_required_body(
                 host, resource_path, HEALTH_PRICE_UNITS,
                 "x402 Endpoint Live Health Check — payment invalid",
+                input_schema=_health_input_schema,
             ),
         )
 
