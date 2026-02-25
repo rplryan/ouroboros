@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.2.3 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.2.4 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,9 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.2.4 -- Extract pricing.py (Principle 5)
+- **New `ouroboros/pricing.py`**: Extracted `_MODEL_PRICING_STATIC`, `get_pricing()`, and `estimate_cost()` from `loop.py` into a dedicated module. `loop.py` reduced from 984 → 894 lines, staying within the 1000-line complexity budget (Principle 5: Minimalism).
 
 ### v6.2.3 -- Model-Aware Context Windows
 - **`llm.py`**: Added `MODEL_CONTEXT_WINDOWS` dict mapping models to their context window sizes (200k for Claude/GPT, 1M for Gemini), plus `_COMPLETION_RESERVE = 8_192` and `get_context_window(model)` helper with exact-match + prefix-match fallback
