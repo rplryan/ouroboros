@@ -2,7 +2,7 @@
 Agents query it to discover available services.
 Each discovery query costs $0.005 USDC on Base.
 
-Wallet: 0xBceC11f20904a30fC4bAF70B85fc33b7A9294683
+Wallet: 0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA
 Network: Base (Ethereum L2)
 Asset: USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
 """
@@ -34,7 +34,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 WALLET_ADDRESS: str = os.getenv(
-    "WALLET_ADDRESS", "0xBceC11f20904a30fC4bAF70B85fc33b7A9294683"
+    "WALLET_ADDRESS", "0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA"
 )
 NETWORK: str = os.getenv("NETWORK", "base")
 USDC_CONTRACT: str = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
