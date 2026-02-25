@@ -1,6 +1,4 @@
-"""
-x402 Service Discovery API
-Maintains a registry of x402-payable endpoints.
+"""REPLACE_MARKER
 Agents query it to discover available services.
 Each discovery query costs $0.005 USDC on Base.
 
