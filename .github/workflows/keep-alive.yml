@@ -1,0 +1,23 @@
+name: Keep x402 Discovery API Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes to prevent Render free tier spin-down (15 min idle timeout)
+    - cron: '*/10 * * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping x402 Service Discovery API
+        run: |
+          echo "Pinging https://x402-discovery-api.onrender.com/ ..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://x402-discovery-api.onrender.com/)
+          echo "HTTP status: $RESPONSE"
+          if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "402" ]; then
+            echo "✅ Service is alive (HTTP $RESPONSE)"
+          else
+            echo "⚠️ Unexpected status: $RESPONSE"
+            # Not failing the job — cold start may return 5xx transiently
+          fi
