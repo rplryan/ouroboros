@@ -110,3 +110,118 @@ If you prefer not to run a local process, you can also point directly at the hos
 ```
 
 Note: the hosted endpoint serves the MCP tool manifest only. The local server (`server.py`) provides full tool execution.
+
+---
+
+## x402 Payment Gateway (`x402_gateway.py`)
+
+### What it is
+
+`x402_gateway.py` is the convergence of two protocols: **x402** (HTTP micropayments) and **MCP** (Model Context Protocol tool calls). Every tool call through this server requires a USDC micropayment on Base before it executes — creating a programmable tool economy where agents automatically pay for capabilities.
+
+This pattern doesn't exist elsewhere in the ecosystem. `server.py` is a *discovery client* (free, read-only). `x402_gateway.py` is a *payment gate* — every tool call is a paid transaction.
+
+```
+MCP Client (Claude / Cursor / any agent)
+    ↓  tool call (no payment)
+x402_gateway
+    ↓  returns payment challenge (402 equivalent)
+Agent pays USDC on Base, gets payment proof
+    ↓  tool call with x402_payment=<proof>
+x402_gateway verifies proof with x402.org/facilitator
+    ↓  verified
+Tool executes, result returned to agent
+```
+
+### Two servers at a glance
+
+| | `server.py` | `x402_gateway.py` |
+|---|---|---|
+| Purpose | Discovery client | Payment gate |
+| Cost per call | Free | USDC micropayment |
+| Tools | x402_discover, x402_browse, x402_health, x402_register | list_gated_tools, discover_x402_services, gateway_stats, register_tool_for_payment |
+| Use case | Find services | Sell / buy tool access |
+
+### Installation
+
+```bash
+pip install mcp requests httpx
+# or
+pip install -r requirements.txt
+```
+
+### Running
+
+```bash
+python x402_gateway.py
+```
+
+The server starts on stdio (MCP standard). Set `GATEWAY_PORT` to expose over HTTP if needed.
+
+### Adding to Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "x402-gateway": {
+      "command": "python",
+      "args": ["/absolute/path/to/agent_economy/discovery_api/mcp/x402_gateway.py"]
+    }
+  }
+}
+```
+
+### Payment flow
+
+1. **Call any gated tool without `x402_payment`** — the server returns a JSON payment challenge:
+   ```json
+   {
+     "error": "Payment Required",
+     "x402Version": 2,
+     "tool": "discover_x402_services",
+     "accepts": [{
+       "scheme": "exact",
+       "network": "eip155:8453",
+       "amount": "1000",
+       "payTo": "0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA",
+       "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+     }]
+   }
+   ```
+2. **Pay the specified amount** in USDC on Base to the `payTo` address.
+3. **Call the tool again** with `x402_payment=<your_payment_proof>`.
+4. The gateway verifies your proof with `https://x402.org/facilitator/verify`.
+5. If valid, the tool executes and returns its result.
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `WALLET_ADDRESS` | CDP wallet address | USDC recipient for all payments |
+| `GATEWAY_PORT` | `8080` | HTTP port (if running in HTTP mode) |
+| `X402_DEV_MODE` | unset | Set to `1` to skip payment verification (testing only) |
+
+### Built-in tools
+
+| Tool | Paid? | Description |
+|---|---|---|
+| `list_gated_tools` | Free | List all registered tools and their prices |
+| `gateway_stats` | Free | Total calls, revenue, per-tool breakdown |
+| `discover_x402_services` | $0.001/call | Find x402 services by capability |
+| `register_tool_for_payment` | Free | Register an external endpoint behind the payment gate |
+
+### Registering your own tools
+
+Call `register_tool_for_payment` from any MCP client:
+
+```
+register_tool_for_payment(
+    tool_name="weather_lookup",
+    description="Current weather for any city.",
+    price_usdc_units=500,          # $0.0005 per call
+    endpoint_url="https://my-api.example.com/weather",
+    tags="weather,data"
+)
+```
+
+After registration, any agent calling `weather_lookup` through this gateway will be gated behind a $0.0005 USDC payment — and your endpoint receives the call only after payment is verified.
