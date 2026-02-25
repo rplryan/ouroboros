@@ -33,7 +33,7 @@ load_dotenv()
 WALLET_ADDRESS: str = os.getenv(
     "WALLET_ADDRESS", "0xBceC11f20904a30fC4bAF70B85fc33b7A9294683"
 )
-NETWORK: str = os.getenv("NETWORK", "base")
+NETWORK: str = os.getenv("NETWORK", "base")  # CAIP-2 network identifier for x402 v2
 USDC_CONTRACT: str = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 # Prices expressed in USDC 6-decimal units (1 USDC = 1_000_000 units)
@@ -90,14 +90,14 @@ async def verify_payment(
     Never raises — failures return (False, "").
     """
     payload = {
-        "x402Version": 1,
+        "x402Version": 2,
         "scheme": "exact",
-        "network": NETWORK,
+        "network": "eip155:8453",
         "payload": payment_header,
         "requirements": {
             "scheme": "exact",
-            "network": NETWORK,
-            "maxAmountRequired": amount,
+            "network": "eip155:8453",
+            "amount": amount,
             "resource": resource_url,
             "payTo": WALLET_ADDRESS,
             "asset": USDC_CONTRACT,
@@ -125,8 +125,8 @@ def _payment_required_body(
 ) -> dict:
     entry: dict = {
         "scheme": "exact",
-        "network": NETWORK,
-        "maxAmountRequired": amount,
+        "network": "eip155:8453",
+        "amount": amount,
         "resource": f"https://{host}{resource_path}",
         "description": description,
         "mimeType": "application/json",
@@ -137,11 +137,14 @@ def _payment_required_body(
     }
     if input_schema is not None:
         entry["input"] = input_schema
-    return {
+    body: dict = {
         "error": "Payment Required",
-        "x402Version": 1,
+        "x402Version": 2,
         "accepts": [entry],
     }
+    if input_schema is not None:
+        body["extensions"] = {"bazaar": {"info": {"input": input_schema}, "schema": input_schema}}
+    return body
 
 
 # ---------------------------------------------------------------------------
