@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: x402-discovery-api
+    runtime: python
+    rootDir: agent_economy/discovery_api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: WALLET_ADDRESS
+        value: 0xBceC11f20904a30fC4bAF70B85fc33b7A9294683
+      - key: NETWORK
+        value: base
+      - key: QUERY_PRICE_USDC_UNITS
+        value: "5000"
+      - key: HEALTH_CHECK_PRICE_USDC_UNITS
+        value: "50000"
+    healthCheckPath: /
