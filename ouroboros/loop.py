@@ -43,6 +43,7 @@ _MODEL_PRICING_STATIC = {
     "google/gemini-2.5-flash": (0.30, 0.03, 2.50),
     "x-ai/grok-3-mini": (0.30, 0.03, 0.50),
     "qwen/qwen3.5-plus-02-15": (0.40, 0.04, 2.40),
+    "pony-alpha/pony-alpha": (0.0, 0.0, 0.0),
 }
 
 _pricing_fetched = False
@@ -702,7 +703,7 @@ def run_llm_loop(
                 # Configurable fallback priority list (Bible P3: no hardcoded behavior)
                 fallback_list_raw = os.environ.get(
                     "OUROBOROS_MODEL_FALLBACK_LIST",
-                    "google/gemini-2.5-pro-preview,openai/o3,anthropic/claude-sonnet-4.6"
+                    "pony-alpha/pony-alpha,google/gemini-2.5-pro-preview"
                 )
                 fallback_candidates = [m.strip() for m in fallback_list_raw.split(",") if m.strip()]
                 fallback_model = None
