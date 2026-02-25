@@ -15,3 +15,11 @@ services:
       - key: HEALTH_CHECK_PRICE_USDC_UNITS
         value: "50000"
     healthCheckPath: /
+
+  - type: cron
+    name: x402-keepalive
+    runtime: python
+    rootDir: agent_economy/discovery_api
+    buildCommand: pip install requests
+    schedule: "*/10 * * * *"
+    startCommand: python3 -c "import requests; r = requests.get('https://x402-discovery-api.onrender.com/'); print(f'keepalive: {r.status_code}')"
