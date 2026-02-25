@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.2.0 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.2.1 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,12 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.2.1 -- Model Updates
+- **DEFAULT_LIGHT_MODEL updated**: Changed default light model from `google/gemini-3-pro-preview` to `google/gemini-2.5-flash` — 6-7x cheaper ($0.30/$2.50 vs $2/$12 per M tokens) and more appropriate for lightweight tasks (dedup, context compaction, background consciousness).
+- **Pricing table**: Added `google/gemini-2.5-flash` to `_MODEL_PRICING_STATIC` in `loop.py`.
+- Also update example config in Quick Start: change `"OUROBOROS_MODEL_LIGHT": "google/gemini-3-pro-preview"` to `"OUROBOROS_MODEL_LIGHT": "google/gemini-2.5-flash"` and the fallback list entry too.
+- In the Configuration table, update the `OUROBOROS_MODEL_LIGHT` default value from `google/gemini-3-pro-preview` to `google/gemini-2.5-flash`.
 
 ### v6.2.0 -- Critical Bugfixes + LLM-First Dedup
 - **Fix: worker_id==0 hard-timeout bug** -- `int(x or -1)` treated worker 0 as -1, preventing terminate on timeout and causing double task execution. Replaced all `x or default` patterns with None-safe checks.
