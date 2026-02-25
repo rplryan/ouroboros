@@ -469,6 +469,88 @@ async def catalog() -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# GET /.well-known/x402 — free, x402 discovery document
+# ---------------------------------------------------------------------------
+
+@app.get("/.well-known/x402", include_in_schema=True)
+async def well_known_x402() -> JSONResponse:
+    return JSONResponse(
+        {
+            "x402Version": 1,
+            "endpoints": [
+                {
+                    "path": "/discover",
+                    "method": "GET",
+                    "description": "Discover x402-payable endpoints by keyword or category",
+                    "price": {
+                        "amount": QUERY_PRICE_UNITS,
+                        "asset": USDC_CONTRACT,
+                        "network": NETWORK,
+                    },
+                    "payTo": WALLET_ADDRESS,
+                    "mimeType": "application/json",
+                },
+                {
+                    "path": "/health/{endpoint_id}",
+                    "method": "GET",
+                    "description": "Live health check for a registered endpoint",
+                    "price": {
+                        "amount": HEALTH_PRICE_UNITS,
+                        "asset": USDC_CONTRACT,
+                        "network": NETWORK,
+                    },
+                    "payTo": WALLET_ADDRESS,
+                    "mimeType": "application/json",
+                },
+            ],
+            "name": "x402 Service Discovery API",
+            "description": (
+                "Registry and discovery service for x402-payable endpoints. "
+                "Find, evaluate, and route to verified x402 services."
+            ),
+            "url": "https://x402-discovery-api.onrender.com",
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Startup — self-register this service in its own registry
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+async def self_register() -> None:
+    self_url = "https://x402-discovery-api.onrender.com"
+    for existing in _registry:
+        if existing.get("url") == self_url:
+            log.info("startup — self already registered id=%s", existing["id"])
+            return
+
+    entry = {
+        "id": str(uuid.uuid4()),
+        "name": "x402 Service Discovery API",
+        "description": (
+            "Registry and discovery service for x402-payable endpoints. "
+            "$0.005 USDC per query."
+        ),
+        "url": self_url,
+        "category": "utility",
+        "price_usd": 0.005,
+        "network": NETWORK,
+        "asset_address": USDC_CONTRACT,
+        "tags": ["discovery", "registry", "infrastructure", "x402"],
+        "registered_at": datetime.now(timezone.utc).isoformat(),
+        "query_count": 0,
+        "uptime_pct": None,
+        "avg_latency_ms": None,
+        "last_health_check": None,
+        "status": "active",
+    }
+    _registry.append(entry)
+    _save_registry(_registry)
+    log.info("startup — self-registered id=%s", entry["id"])
+
+
+# ---------------------------------------------------------------------------
 # GET /mcp — free, MCP tool definitions
 # ---------------------------------------------------------------------------
 
