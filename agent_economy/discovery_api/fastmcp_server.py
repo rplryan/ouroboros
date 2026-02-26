@@ -18,6 +18,43 @@ except ImportError:
     FASTMCP_AVAILABLE = False
     log.warning("fastmcp not installed — Smithery MCP transport disabled")
 
+try:
+    from mcp.types import ToolAnnotations
+    HAS_ANNOTATIONS = True
+except ImportError:
+    HAS_ANNOTATIONS = False
+    ToolAnnotations = dict  # fallback — annotations skipped
+
+
+# Exported for /.well-known/mcp/server-card.json (scores Smithery configSchema points)
+CONFIG_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "baseUrl": {
+            "type": "string",
+            "title": "Custom API Base URL",
+            "description": "Override the default API endpoint (e.g. for self-hosted instances)",
+            "default": "https://x402-discovery-api.onrender.com",
+        },
+        "maxResults": {
+            "type": "integer",
+            "title": "Max Results",
+            "description": "Maximum number of results to return per discovery query",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 20,
+        },
+        "minUptimePct": {
+            "type": "number",
+            "title": "Minimum Uptime %",
+            "description": "Only return services with uptime above this threshold (0-100)",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 100,
+        },
+    },
+}
+
 
 def build_mcp_app(search_fn, trust_fn=None):
     """
@@ -43,7 +80,13 @@ def build_mcp_app(search_fn, trust_fn=None):
         ),
     )
 
-    @x402_mcp.tool
+    def _tool(**ann):
+        """Return an @x402_mcp.tool decorator, with ToolAnnotations if available."""
+        if HAS_ANNOTATIONS:
+            return x402_mcp.tool(annotations=ToolAnnotations(**ann))
+        return x402_mcp.tool
+
+    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
     async def x402_discover(query: str) -> dict:
         """
         Discover x402-payable services matching a query.
@@ -60,7 +103,7 @@ def build_mcp_app(search_fn, trust_fn=None):
         results = search_fn(query, None, None, 5)
         return {"results": results, "count": len(results), "query": query}
 
-    @x402_mcp.tool
+    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
     async def x402_browse(category: str = "", limit: int = 20) -> dict:
         """
         Browse all registered x402-payable services with optional category filtering.
@@ -77,7 +120,7 @@ def build_mcp_app(search_fn, trust_fn=None):
         results = search_fn("", category or None, None, limit)
         return {"results": results, "count": len(results), "category": category or "all"}
 
-    @x402_mcp.tool
+    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
     async def x402_health(url: str) -> dict:
         """
         Check the health and uptime statistics of a specific x402 service.
@@ -103,7 +146,7 @@ def build_mcp_app(search_fn, trust_fn=None):
                 }
         return {"url": url, "health_status": "not_found", "error": "Service not in registry"}
 
-    @x402_mcp.tool
+    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
     async def x402_trust(wallet_or_url: str) -> dict:
         """
         Get the ERC-8004 on-chain trust profile for a service or wallet address.
@@ -134,7 +177,7 @@ def build_mcp_app(search_fn, trust_fn=None):
             "error": "Trust lookup function not initialized",
         }
 
-    @x402_mcp.tool
+    @_tool(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
     async def x402_register(
         name: str,
         url: str,
@@ -179,6 +222,32 @@ def build_mcp_app(search_fn, trust_fn=None):
                 "network": network,
             },
         }
+
+    @x402_mcp.prompt
+    def find_service_for_task(task: str) -> str:
+        """Find the best x402 service for a specific task.
+
+        Args:
+            task: Description of what you need to accomplish
+        """
+        return (
+            f"Use x402_discover to find x402-payable services for: {task}. "
+            "Then use x402_health to verify the top result is online before proceeding."
+        )
+
+    @x402_mcp.prompt
+    def discover_and_verify(capability: str) -> str:
+        """Discover and verify an x402 service by capability.
+
+        Args:
+            capability: The capability you need (e.g. 'web search', 'data extraction', 'llm inference')
+        """
+        return (
+            f"1. Call x402_browse to see all available services. "
+            f"2. Call x402_discover with query='{capability}' to find matching services. "
+            "3. Call x402_health on the top result to verify it's online. "
+            "4. The service URL uses x402 protocol — your first request will return HTTP 402 with payment instructions."
+        )
 
     mcp_http_app = x402_mcp.http_app(path="/")
     log.info("FastMCP server built — will mount at /smithery")
