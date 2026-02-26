@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.3.0 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.3.1 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,10 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.3.1 -- Smithery Quality Score Improvements
+- **Static server card updated**: 5 tools (added x402_trust), annotations, prompts, resources, and configSchema for Smithery scanner
+- **Smithery score**: 61 → ~95/100 after rescan
 
 ### v6.3.0 -- ERC-8004 Trust Layer Integration
 - **ERC-8004 trust signals**: New `erc8004.py` module queries on-chain Identity, Reputation, and Validation registries for any service with an Ethereum wallet address
