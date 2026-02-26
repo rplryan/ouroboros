@@ -327,6 +327,114 @@ async def _handle_mcp_tool_call(
 
 
 # ---------------------------------------------------------------------------
+# Prompt and resource helpers (module-level — no closure needed)
+# ---------------------------------------------------------------------------
+
+def _handle_prompts(method: str, req_id, params: dict) -> JSONResponse:
+    if method == "prompts/list":
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"prompts": MCP_PROMPTS},
+        })
+    # prompts/get
+    prompt_name = params.get("name", "")
+    prompt = next((p for p in MCP_PROMPTS if p["name"] == prompt_name), None)
+    if not prompt:
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32602, "message": f"Prompt not found: {prompt_name}"},
+        }, status_code=404)
+    args = params.get("arguments", {})
+    if prompt_name == "discover_x402_services":
+        capability = args.get("capability", "APIs")
+        messages = [
+            {
+                "role": "user",
+                "content": {
+                    "type": "text",
+                    "text": f"Use x402_discover to find x402-payable services for: {capability}. Show results with quality scores, pricing, and health status.",
+                },
+            }
+        ]
+    else:
+        service_id = args.get("service_id", "the service")
+        messages = [
+            {
+                "role": "user",
+                "content": {
+                    "type": "text",
+                    "text": f"Check trustworthiness of {service_id}: use x402_health for uptime/latency, x402_trust for ERC-8004 on-chain identity. Summarize risk level.",
+                },
+            }
+        ]
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "result": {"description": prompt["description"], "messages": messages},
+    })
+
+
+def _handle_resources(method: str, req_id, params: dict, registry: list) -> JSONResponse:
+    if method == "resources/list":
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"resources": MCP_RESOURCES},
+        })
+    # resources/read
+    uri = params.get("uri", "")
+    if uri == "x402://catalog":
+        catalog_summary = [
+            {"id": e.get("id"), "name": e.get("name"), "category": e.get("category"), "price_usd": e.get("price_usd")}
+            for e in registry
+        ]
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "contents": [
+                    {
+                        "uri": uri,
+                        "mimeType": "application/json",
+                        "text": json.dumps({"services": catalog_summary, "count": len(catalog_summary)}, indent=2),
+                    }
+                ]
+            },
+        })
+    elif uri == "x402://catalog/featured":
+        sorted_entries = sorted(
+            registry,
+            key=lambda e: (e.get("uptime_pct", 0) or 0) + (100 - min(e.get("avg_latency_ms", 100) or 100, 100)),
+            reverse=True,
+        )[:5]
+        featured = [
+            {"id": e.get("id"), "name": e.get("name"), "category": e.get("category"), "price_usd": e.get("price_usd"), "uptime_pct": e.get("uptime_pct"), "health_status": e.get("health_status")}
+            for e in sorted_entries
+        ]
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "contents": [
+                    {
+                        "uri": uri,
+                        "mimeType": "application/json",
+                        "text": json.dumps({"featured": featured, "count": len(featured)}, indent=2),
+                    }
+                ]
+            },
+        })
+    else:
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32602, "message": f"Resource not found: {uri}"},
+        }, status_code=404)
+
+
+# ---------------------------------------------------------------------------
 # Router factory
 # ---------------------------------------------------------------------------
 
@@ -352,7 +460,8 @@ def create_mcp_router(
         """MCP Streamable HTTP transport endpoint for Smithery.
 
         Implements JSON-RPC 2.0 over HTTP POST per MCP spec.
-        Handles: initialize, notifications/initialized, tools/list, tools/call
+        Handles: initialize, notifications/initialized, tools/list, tools/call,
+                 prompts/list, prompts/get, resources/list, resources/read
         """
         try:
             body = await request.json()
@@ -429,107 +538,11 @@ def create_mcp_router(
                     "error": {"code": -32603, "message": f"Internal error: {exc}"},
                 }, status_code=500)
 
-        elif method == "prompts/list":
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"prompts": MCP_PROMPTS},
-            })
+        elif method in ("prompts/list", "prompts/get"):
+            return _handle_prompts(method, req_id, params)
 
-        elif method == "prompts/get":
-            prompt_name = params.get("name", "")
-            prompt = next((p for p in MCP_PROMPTS if p["name"] == prompt_name), None)
-            if not prompt:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": req_id,
-                    "error": {"code": -32602, "message": f"Prompt not found: {prompt_name}"},
-                }, status_code=404)
-            args = params.get("arguments", {})
-            if prompt_name == "discover_x402_services":
-                capability = args.get("capability", "APIs")
-                messages = [
-                    {
-                        "role": "user",
-                        "content": {
-                            "type": "text",
-                            "text": f"Use x402_discover to find x402-payable services for: {capability}. Show results with quality scores, pricing, and health status.",
-                        },
-                    }
-                ]
-            else:
-                service_id = args.get("service_id", "the service")
-                messages = [
-                    {
-                        "role": "user",
-                        "content": {
-                            "type": "text",
-                            "text": f"Check trustworthiness of {service_id}: use x402_health for uptime/latency, x402_trust for ERC-8004 on-chain identity. Summarize risk level.",
-                        },
-                    }
-                ]
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"description": prompt["description"], "messages": messages},
-            })
-
-        elif method == "resources/list":
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"resources": MCP_RESOURCES},
-            })
-
-        elif method == "resources/read":
-            uri = params.get("uri", "")
-            if uri == "x402://catalog":
-                catalog_summary = [
-                    {"id": e.get("id"), "name": e.get("name"), "category": e.get("category"), "price_usd": e.get("price_usd")}
-                    for e in registry
-                ]
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": req_id,
-                    "result": {
-                        "contents": [
-                            {
-                                "uri": uri,
-                                "mimeType": "application/json",
-                                "text": json.dumps({"services": catalog_summary, "count": len(catalog_summary)}, indent=2),
-                            }
-                        ]
-                    },
-                })
-            elif uri == "x402://catalog/featured":
-                sorted_entries = sorted(
-                    registry,
-                    key=lambda e: (e.get("uptime_pct", 0) or 0) + (100 - min(e.get("avg_latency_ms", 100) or 100, 100)),
-                    reverse=True,
-                )[:5]
-                featured = [
-                    {"id": e.get("id"), "name": e.get("name"), "category": e.get("category"), "price_usd": e.get("price_usd"), "uptime_pct": e.get("uptime_pct"), "health_status": e.get("health_status")}
-                    for e in sorted_entries
-                ]
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": req_id,
-                    "result": {
-                        "contents": [
-                            {
-                                "uri": uri,
-                                "mimeType": "application/json",
-                                "text": json.dumps({"featured": featured, "count": len(featured)}, indent=2),
-                            }
-                        ]
-                    },
-                })
-            else:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": req_id,
-                    "error": {"code": -32602, "message": f"Resource not found: {uri}"},
-                }, status_code=404)
+        elif method in ("resources/list", "resources/read"):
+            return _handle_resources(method, req_id, params, registry)
 
         else:
             return JSONResponse({
