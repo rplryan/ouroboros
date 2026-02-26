@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.2.4 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.2.5 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -223,6 +223,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v6.2.5 -- MCP Streamable HTTP transport
+- **MCP Streamable HTTP transport**: proper JSON-RPC 2.0 `/smithery` endpoint for Smithery.ai listing; extracted `mcp_transport.py` module
+
 ### v6.2.4 -- Extract pricing.py (Principle 5)
 - **New `ouroboros/pricing.py`**: Extracted `_MODEL_PRICING_STATIC`, `get_pricing()`, and `estimate_cost()` from `loop.py` into a dedicated module. `loop.py` reduced from 984 → 894 lines, staying within the 1000-line complexity budget (Principle 5: Minimalism).
 
@@ -242,18 +245,6 @@ Full text: [BIBLE.md](BIBLE.md)
 - **Pricing table**: Added `google/gemini-2.5-flash` to `_MODEL_PRICING_STATIC` in `loop.py`.
 - Also update example config in Quick Start: change `"OUROBOROS_MODEL_LIGHT": "google/gemini-3-pro-preview"` to `"OUROBOROS_MODEL_LIGHT": "google/gemini-2.5-flash"` and the fallback list entry too.
 - In the Configuration table, update the `OUROBOROS_MODEL_LIGHT` default value from `google/gemini-3-pro-preview` to `google/gemini-2.5-flash`.
-
-### v6.2.0 -- Critical Bugfixes + LLM-First Dedup
-- **Fix: worker_id==0 hard-timeout bug** -- `int(x or -1)` treated worker 0 as -1, preventing terminate on timeout and causing double task execution. Replaced all `x or default` patterns with None-safe checks.
-- **Fix: double budget accounting** -- per-task aggregate `llm_usage` event removed; per-round events already track correctly. Eliminates ~2x budget drift.
-- **Fix: compact_context tool** -- handler had wrong signature (missing ctx param), making it always error. Now works correctly.
-- **LLM-first task dedup** -- replaced hardcoded keyword-similarity dedup (Bible P3 violation) with light LLM call via OUROBOROS_MODEL_LIGHT. Catches paraphrased duplicates.
-- **LLM-driven context compaction** -- compact_context tool now uses light model to summarize old tool results instead of simple truncation.
-- **Fix: health invariant #5** -- `owner_message_injected` events now properly logged to events.jsonl for duplicate processing detection.
-- **Fix: shell cmd parsing** -- `str.split()` replaced with `shlex.split()` for proper shell quoting support.
-- **Fix: retry task_id** -- timeout retries now get a new task_id with `original_task_id` lineage tracking.
-- **claude_code_edit timeout** -- aligned subprocess and tool wrapper to 300s.
-- **Direct chat guard** -- `schedule_task` from direct chat now logged as warning for audit.
 
 ### v6.1.0 -- Budget Optimization: Selective Schemas + Self-Check + Dedup
 - **Selective tool schemas** -- core tools (~29) always in context, 23 others available via `list_available_tools`/`enable_tools`. Saves ~40% schema tokens per round.
