@@ -762,6 +762,112 @@ async def well_known_discovery(request: Request) -> JSONResponse:
     )
 
 
+@app.get("/.well-known/mcp/server-card.json", include_in_schema=False)
+async def smithery_server_card(request: Request) -> JSONResponse:
+    """Static server card for Smithery scanner — bypasses x402 payment gate.
+    See: https://smithery.ai/docs/build/publish (Static Server Card section)"""
+    return JSONResponse(
+        {
+            "serverInfo": {
+                "name": "x402 Service Discovery",
+                "version": "3.0.0"
+            },
+            "authentication": {
+                "required": False
+            },
+            "tools": [
+                {
+                    "name": "x402_discover",
+                    "description": "Discover x402-payable APIs at runtime. Search the registry of paid endpoints by keyword, category, or capability tag. Returns service URLs, pricing, health status, and quality signals. Costs $0.005 USDC per query (x402 micropayment on Base).",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search keyword (e.g. 'image generation', 'data enrichment')"
+                            },
+                            "category": {
+                                "type": "string",
+                                "description": "Filter by category (e.g. 'AI', 'Data', 'Finance')"
+                            },
+                            "capability": {
+                                "type": "string",
+                                "description": "Filter by capability tag (e.g. 'text-to-image', 'web-scraping')"
+                            },
+                            "max_price_usd": {
+                                "type": "number",
+                                "description": "Maximum price per call in USD (default: 0.50)"
+                            }
+                        },
+                        "required": []
+                    }
+                },
+                {
+                    "name": "x402_catalog",
+                    "description": "Browse the full catalog of registered x402-payable services. Free — no payment required. Returns all services with health status, pricing, and capability tags.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                },
+                {
+                    "name": "x402_health",
+                    "description": "Check the health and uptime of a specific x402 service endpoint. Free — no payment required.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "endpoint_id": {
+                                "type": "string",
+                                "description": "The service endpoint ID or URL to check"
+                            }
+                        },
+                        "required": ["endpoint_id"]
+                    }
+                },
+                {
+                    "name": "x402_register",
+                    "description": "Register a new x402-payable service endpoint in the discovery registry. Free — no payment required.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The HTTPS URL of the x402-payable endpoint"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "Human-readable service name"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "What the service does"
+                            },
+                            "category": {
+                                "type": "string",
+                                "description": "Service category (e.g. 'AI', 'Data', 'Finance')"
+                            },
+                            "price_usd": {
+                                "type": "number",
+                                "description": "Price per call in USD"
+                            },
+                            "capabilities": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Capability tags (e.g. ['text-to-image', 'async'])"
+                            }
+                        },
+                        "required": ["url", "name", "description"]
+                    }
+                }
+            ],
+            "resources": [],
+            "prompts": []
+        },
+        headers={"Cache-Control": "public, max-age=3600"}
+    )
+
+
 @app.post("/report")
 async def report_outcome(req: ReportRequest, request: Request) -> JSONResponse:
     """Agent feedback endpoint — free, no payment gate.
