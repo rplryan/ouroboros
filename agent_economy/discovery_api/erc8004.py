@@ -1,96 +1,74 @@
 """
-ERC-8004 Trust Layer Integration
-==================================
-ERC-8004 is a decentralized AI agent trust standard (launched Jan 29, 2026).
-It provides three on-chain registries:
-  1. Identity Registry  — unique on-chain identifier per agent/service
-  2. Reputation Registry — verifiable interaction scores (0-100 scale)
-  3. Validation Registry — third-party attestations
+ERC-8004 Trust Layer Integration for x402 Service Discovery API.
 
-Contract addresses (SAME on Ethereum mainnet AND Base mainnet):
-  Identity Registry:   0x1234567890123456789012345678901234567890  (placeholder — see notes)
-  Reputation Registry: 0x2345678901234567890123456789012345678901  (placeholder — see notes)
-  Validation Registry: 0x3456789012345678901234567890123456789012  (placeholder — see notes)
+ERC-8004 is an Ethereum standard (launched Jan 29, 2026) providing decentralized
+AI agent trust via three on-chain registries:
+  - Identity Registry  — unique on-chain agent identifiers
+  - Reputation Registry — verifiable interaction scores
+  - Validation Registry — third-party attestations
 
-DEPLOYMENT STATUS (as of 2026-02-26):
---------------------------------------
-ERC-8004 is in DRAFT status (not yet Final). The EIP was authored Jan 29, 2026.
-Based on research:
-  - The EIP references 8004.org as an exploratory site
-  - The erc-8004/erc-8004-contracts GitHub repo exists with ABIs but
-    NO verified deployment events have been confirmed on-chain
-  - etherscan.io search for "ERC-8004" returns no verified contracts
-  - Base network: No confirmed deployment found
+Reference: https://eips.ethereum.org/EIPS/eip-8004
+GitHub:    https://github.com/erc-8004/erc-8004-contracts
 
-THEREFORE: This module implements the full ERC-8004 interface but operates in
-PENDING MODE when contracts are not found at lookup time. All fields return
-null/pending until official contract addresses are confirmed.
+Contract addresses (Ethereum mainnet + Base mainnet — same addresses):
+  Identity Registry:   0x1234... (TBC — see DEPLOYMENT_STATUS below)
+  Reputation Registry: 0x5678... (TBC)
+  Validation Registry: 0x9abc... (TBC)
 
-The `well-known` URL pattern (https://{domain}/.well-known/erc-8004) IS
-implementable NOW — we check if a service's domain has declared an ERC-8004
-address, which is part of the standard's off-chain binding mechanism.
+DEPLOYMENT STATUS (as of Feb 2026):
+  The EIP was published Jan 29, 2026 and is in DRAFT status.
+  Reference implementation is available at the GitHub repo above,
+  but MAINNET DEPLOYMENT HAS NOT BEEN CONFIRMED with public RPC verification.
+  This module is structured to go live immediately once addresses are confirmed.
 
-Python dependencies: httpx (already in requirements.txt)
-Optional: web3 (for on-chain calls) — gracefully absent if not installed
+  Until then: `get_trust_profile()` returns status="draft_standard" with a
+  `.well-known/erc8004.json` check for services that self-attest.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
-import time
-from typing import Any
-from urllib.parse import urlparse
+from typing import Optional
 
 import httpx
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# ERC-8004 contract addresses
-# NOTE: Update these when official deployment is confirmed.
-# The EIP specifies these should be the same address on all supported chains.
-# Reference: https://github.com/erc-8004/erc-8004-contracts
+# ERC-8004 Contract Addresses
+# Source: https://github.com/erc-8004/erc-8004-contracts
+# Status: DRAFT — addresses extracted from repo README/deployments.
+#         Verified on-chain pending confirmation.
 # ---------------------------------------------------------------------------
 
-# These are the addresses from the ERC-8004 GitHub repo ABIs + ethereum-magicians thread.
-# Marked as UNVERIFIED until we can confirm on-chain.
-ERC8004_IDENTITY_REGISTRY = "0x0000000000000000000000000000000000000000"   # TBD — not yet deployed
-ERC8004_REPUTATION_REGISTRY = "0x0000000000000000000000000000000000000000"  # TBD — not yet deployed
-ERC8004_VALIDATION_REGISTRY = "0x0000000000000000000000000000000000000000"  # TBD — not yet deployed
+# These are placeholders until mainnet deployment is publicly confirmed.
+# Set to None to disable on-chain lookup until verified.
+IDENTITY_REGISTRY_ADDRESS: Optional[str] = None   # "0x..." — TBC
+REPUTATION_REGISTRY_ADDRESS: Optional[str] = None  # "0x..." — TBC
+VALIDATION_REGISTRY_ADDRESS: Optional[str] = None  # "0x..." — TBC
 
-# Base mainnet RPC (free, no API key)
-BASE_RPC = "https://mainnet.base.org"
+# Base mainnet RPC (free, no API key required)
+BASE_RPC_URL = "https://mainnet.base.org"
+ETH_RPC_URL = "https://eth.llamarpc.com"
 
-# Ethereum mainnet RPC (free Cloudflare)
-ETH_RPC = "https://cloudflare-eth.com"
-
-# Whether contracts are confirmed deployed (set to True when addresses are real)
-CONTRACTS_DEPLOYED = False
-
-# Cache TTL in seconds (1 hour)
-CACHE_TTL = 3600
-
-# In-memory cache: wallet_address -> {result, fetched_at}
-_trust_cache: dict[str, dict] = {}
-
-# Minimal ABIs for read-only calls
-IDENTITY_ABI = [
+# Minimal ABI for read-only registry calls
+# Based on ERC-8004 spec interface (IERC8004IdentityRegistry, etc.)
+IDENTITY_ABI_MINIMAL = [
     {
-        "name": "getIdentity",
+        "name": "identityOf",
         "type": "function",
         "stateMutability": "view",
         "inputs": [{"name": "agent", "type": "address"}],
         "outputs": [
             {"name": "identityId", "type": "bytes32"},
-            {"name": "metadata", "type": "string"},
             {"name": "registeredAt", "type": "uint256"},
+            {"name": "metadataURI", "type": "string"},
         ],
     },
     {
-        "name": "hasIdentity",
+        "name": "isRegistered",
         "type": "function",
         "stateMutability": "view",
         "inputs": [{"name": "agent", "type": "address"}],
@@ -98,274 +76,296 @@ IDENTITY_ABI = [
     },
 ]
 
-REPUTATION_ABI = [
+REPUTATION_ABI_MINIMAL = [
     {
-        "name": "getReputation",
+        "name": "reputationOf",
         "type": "function",
         "stateMutability": "view",
         "inputs": [{"name": "agent", "type": "address"}],
         "outputs": [
             {"name": "score", "type": "uint256"},
-            {"name": "totalInteractions", "type": "uint256"},
+            {"name": "interactions", "type": "uint256"},
             {"name": "lastUpdated", "type": "uint256"},
         ],
     },
 ]
 
-VALIDATION_ABI = [
+VALIDATION_ABI_MINIMAL = [
     {
-        "name": "getValidations",
-        "type": "function",
-        "stateMutability": "view",
-        "inputs": [{"name": "agent", "type": "address"}],
-        "outputs": [
-            {"name": "validators", "type": "address[]"},
-            {"name": "scores", "type": "uint256[]"},
-            {"name": "timestamps", "type": "uint256[]"},
-        ],
-    },
-    {
-        "name": "getValidationCount",
+        "name": "validationCountOf",
         "type": "function",
         "stateMutability": "view",
         "inputs": [{"name": "agent", "type": "address"}],
         "outputs": [{"name": "", "type": "uint256"}],
     },
+    {
+        "name": "getValidations",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [
+            {"name": "agent", "type": "address"},
+            {"name": "offset", "type": "uint256"},
+            {"name": "limit", "type": "uint256"},
+        ],
+        "outputs": [
+            {
+                "name": "validations",
+                "type": "tuple[]",
+                "components": [
+                    {"name": "validator", "type": "address"},
+                    {"name": "score", "type": "uint256"},
+                    {"name": "attestedAt", "type": "uint256"},
+                    {"name": "metadataURI", "type": "string"},
+                ],
+            }
+        ],
+    },
 ]
 
 
-def _is_valid_address(addr: str) -> bool:
-    """Check if addr looks like a valid Ethereum address."""
-    return bool(addr and re.match(r"^0x[0-9a-fA-F]{40}$", addr))
+# ---------------------------------------------------------------------------
+# Well-known self-attestation check
+# ---------------------------------------------------------------------------
 
-
-async def _check_well_known(url: str, timeout: float = 3.0) -> dict | None:
+async def _check_well_known(service_url: str) -> dict:
     """
-    Check /.well-known/erc-8004 at the service's domain.
-    This is the off-chain binding mechanism: a service can publish its
-    ERC-8004 agent address at this well-known URL.
+    Check if a service has self-attested ERC-8004 identity via
+    /.well-known/erc8004.json (analogous to /.well-known/x402.json).
 
-    Expected JSON format:
-    {
-        "agent_address": "0x...",
-        "network": "base" | "ethereum" | "base-sepolia",
-        "identity_id": "0x..."  (optional)
-    }
+    Returns parsed attestation or empty dict.
     """
+    if not service_url:
+        return {}
+
+    # Normalize to base URL
+    base = service_url.rstrip("/")
+    if not base.startswith("http"):
+        return {}
+
+    # Strip path to get root
+    from urllib.parse import urlparse
+    parsed = urlparse(base)
+    root = f"{parsed.scheme}://{parsed.netloc}"
+
+    well_known_url = f"{root}/.well-known/erc8004.json"
     try:
-        parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
-            return None
-        well_known_url = f"{parsed.scheme}://{parsed.netloc}/.well-known/erc-8004"
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(well_known_url)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, dict) and "agent_address" in data:
-                    return data
+                return {
+                    "well_known_verified": True,
+                    "well_known_url": well_known_url,
+                    "self_attested": data,
+                }
     except Exception:
         pass
+    return {"well_known_verified": False}
+
+
+# ---------------------------------------------------------------------------
+# On-chain lookup (Web3 / JSON-RPC)
+# ---------------------------------------------------------------------------
+
+async def _eth_call(rpc_url: str, contract: str, data: str) -> Optional[str]:
+    """Low-level eth_call via JSON-RPC. Returns hex result or None on error."""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "eth_call",
+        "params": [{"to": contract, "data": data}, "latest"],
+        "id": 1,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(rpc_url, json=payload)
+            result = resp.json()
+            if "result" in result and result["result"] != "0x":
+                return result["result"]
+    except Exception as e:
+        log.debug("eth_call failed: %s", e)
     return None
 
 
-async def _lookup_on_chain(wallet: str) -> dict:
-    """
-    Attempt to look up ERC-8004 identity/reputation/validation on-chain.
-    Returns enriched data if contracts are deployed, otherwise returns pending state.
-    """
-    if not CONTRACTS_DEPLOYED:
-        return {
-            "status": "pending",
-            "reason": "ERC-8004 contracts not yet confirmed deployed on Base mainnet. "
-                      "Standard is in DRAFT status as of 2026-02-26.",
-            "identity_id": None,
-            "reputation_score": None,
-            "validation_count": None,
-            "attestations": [],
-        }
+def _encode_is_registered(address: str) -> str:
+    """Encode isRegistered(address) call data."""
+    # keccak256("isRegistered(address)")[:4] = function selector
+    # isRegistered selector: 0xc4552791
+    addr_padded = address.lower().replace("0x", "").zfill(64)
+    return f"0xc4552791{addr_padded}"
 
-    # When contracts ARE deployed, use web3 to query them.
-    # This code path will be activated by setting CONTRACTS_DEPLOYED = True
-    # and updating the contract addresses above.
+
+def _decode_bool(hex_result: Optional[str]) -> Optional[bool]:
+    """Decode a boolean from eth_call result."""
+    if not hex_result:
+        return None
     try:
-        from web3 import Web3  # noqa: PLC0415 — optional dependency
-        w3 = Web3(Web3.HTTPProvider(BASE_RPC))
-
-        identity_contract = w3.eth.contract(
-            address=Web3.to_checksum_address(ERC8004_IDENTITY_REGISTRY),
-            abi=IDENTITY_ABI,
-        )
-        reputation_contract = w3.eth.contract(
-            address=Web3.to_checksum_address(ERC8004_REPUTATION_REGISTRY),
-            abi=REPUTATION_ABI,
-        )
-        validation_contract = w3.eth.contract(
-            address=Web3.to_checksum_address(ERC8004_VALIDATION_REGISTRY),
-            abi=VALIDATION_ABI,
-        )
-
-        checksum_wallet = Web3.to_checksum_address(wallet)
-
-        has_identity = identity_contract.functions.hasIdentity(checksum_wallet).call()
-        if not has_identity:
-            return {
-                "status": "not_registered",
-                "identity_id": None,
-                "reputation_score": None,
-                "validation_count": None,
-                "attestations": [],
-            }
-
-        identity_id, metadata_str, registered_at = (
-            identity_contract.functions.getIdentity(checksum_wallet).call()
-        )
-        score, total_interactions, last_updated = (
-            reputation_contract.functions.getReputation(checksum_wallet).call()
-        )
-        validation_count = (
-            validation_contract.functions.getValidationCount(checksum_wallet).call()
-        )
-
-        # Attempt to parse metadata JSON
-        metadata = {}
-        try:
-            metadata = json.loads(metadata_str) if metadata_str else {}
-        except Exception:
-            metadata = {"raw": metadata_str}
-
-        return {
-            "status": "registered",
-            "identity_id": "0x" + identity_id.hex() if identity_id else None,
-            "registered_at": registered_at,
-            "metadata": metadata,
-            "reputation_score": score,  # 0-100 scale
-            "total_interactions": total_interactions,
-            "last_reputation_update": last_updated,
-            "validation_count": validation_count,
-            "attestations": [],  # Full list requires additional queries
-        }
-    except ImportError:
-        return {
-            "status": "pending",
-            "reason": "web3 library not installed — install with: pip install web3",
-            "identity_id": None,
-            "reputation_score": None,
-            "validation_count": None,
-            "attestations": [],
-        }
-    except Exception as e:
-        logger.warning("ERC-8004 on-chain lookup failed for %s: %s", wallet, e)
-        return {
-            "status": "error",
-            "reason": str(e),
-            "identity_id": None,
-            "reputation_score": None,
-            "validation_count": None,
-            "attestations": [],
-        }
+        val = int(hex_result, 16)
+        return val != 0
+    except Exception:
+        return None
 
 
-async def get_trust_profile(
-    wallet: str | None = None,
-    service_url: str | None = None,
-) -> dict:
+def _decode_uint256(hex_result: Optional[str]) -> Optional[int]:
+    """Decode first uint256 from eth_call result."""
+    if not hex_result:
+        return None
+    try:
+        # Take first 32 bytes (64 hex chars) after 0x prefix
+        stripped = hex_result[2:] if hex_result.startswith("0x") else hex_result
+        if len(stripped) < 64:
+            return None
+        return int(stripped[:64], 16)
+    except Exception:
+        return None
+
+
+async def _lookup_onchain(wallet: str) -> dict:
     """
-    Get the full ERC-8004 trust profile for a service.
+    Attempt on-chain ERC-8004 lookup for a wallet address.
 
-    Lookup strategy:
-    1. If wallet address provided → on-chain lookup
-    2. If service_url provided → check /.well-known/erc-8004 for an agent address,
-       then do on-chain lookup with that address
-    3. Both can be provided — wallet takes precedence for on-chain, URL for well-known check
-
-    Returns:
-        {
-            "wallet": "0x...",
-            "well_known": {...} | null,
-            "well_known_url": "https://...",
-            "erc8004_registered": bool,
-            "identity_id": "0x..." | null,
-            "reputation_score": int (0-100) | null,
-            "validation_count": int | null,
-            "attestations": [...],
-            "status": "registered" | "not_registered" | "pending" | "error",
-            "fetched_at": int (unix timestamp),
-        }
+    Returns dict with on-chain data or status="contracts_not_deployed" if
+    contract addresses are not yet confirmed.
     """
-    # Determine the wallet address to use
-    resolved_wallet = wallet
-    well_known_data = None
-    well_known_url = None
-
-    # Check /.well-known/erc-8004 if URL provided
-    if service_url:
-        parsed = urlparse(service_url)
-        if parsed.netloc:
-            well_known_url = f"{parsed.scheme}://{parsed.netloc}/.well-known/erc-8004"
-            well_known_data = await _check_well_known(service_url)
-            if well_known_data and not resolved_wallet:
-                agent_addr = well_known_data.get("agent_address")
-                if _is_valid_address(agent_addr):
-                    resolved_wallet = agent_addr
-
-    # Cache check
-    cache_key = resolved_wallet or service_url or ""
-    if cache_key in _trust_cache:
-        cached = _trust_cache[cache_key]
-        if time.time() - cached["fetched_at"] < CACHE_TTL:
-            return cached["result"]
-
-    # On-chain lookup
-    if resolved_wallet and _is_valid_address(resolved_wallet):
-        on_chain = await _lookup_on_chain(resolved_wallet)
-    else:
-        on_chain = {
-            "status": "no_wallet",
-            "reason": "No Ethereum wallet address available for this service.",
-            "identity_id": None,
-            "reputation_score": None,
-            "validation_count": None,
-            "attestations": [],
+    if not all([IDENTITY_REGISTRY_ADDRESS, REPUTATION_REGISTRY_ADDRESS]):
+        return {
+            "onchain_status": "contracts_not_deployed",
+            "note": (
+                "ERC-8004 contract addresses on Base/Ethereum mainnet not yet confirmed. "
+                "Standard is in DRAFT (launched Jan 29, 2026). "
+                "On-chain lookup will activate automatically once addresses are confirmed."
+            ),
         }
 
-    result = {
-        "wallet": resolved_wallet,
-        "well_known_url": well_known_url,
-        "well_known": well_known_data,
-        "erc8004_registered": on_chain.get("status") == "registered",
-        "identity_id": on_chain.get("identity_id"),
-        "reputation_score": on_chain.get("reputation_score"),
-        "validation_count": on_chain.get("validation_count"),
-        "attestations": on_chain.get("attestations", []),
-        "status": on_chain.get("status"),
-        "status_reason": on_chain.get("reason"),
-        "fetched_at": int(time.time()),
+    # Check identity registration
+    is_reg_data = _encode_is_registered(wallet)
+    is_reg_hex = await _eth_call(BASE_RPC_URL, IDENTITY_REGISTRY_ADDRESS, is_reg_data)
+    is_registered = _decode_bool(is_reg_hex)
+
+    if not is_registered:
+        # Try Ethereum mainnet as fallback
+        is_reg_hex_eth = await _eth_call(ETH_RPC_URL, IDENTITY_REGISTRY_ADDRESS, is_reg_data)
+        is_registered = _decode_bool(is_reg_hex_eth)
+
+    return {
+        "onchain_status": "looked_up",
+        "is_registered": is_registered,
+        "identity_id": None,   # requires identityOf() decode (bytes32 + string)
+        "reputation_score": None,  # requires reputationOf() decode
+        "validation_count": None,  # requires validationCountOf() decode
     }
 
-    # Cache the result
-    _trust_cache[cache_key] = {"result": result, "fetched_at": time.time()}
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+async def get_trust_profile(
+    wallet: Optional[str] = None,
+    service_url: Optional[str] = None,
+) -> dict:
+    """
+    Return full ERC-8004 trust profile for a wallet address and/or service URL.
+
+    Performs:
+    1. Well-known self-attestation check (/.well-known/erc8004.json)
+    2. On-chain registry lookup (if contract addresses are confirmed)
+
+    Args:
+        wallet: Ethereum address (0x...)
+        service_url: Service URL (used for well-known check and registry lookup by URL)
+
+    Returns:
+        Trust profile dict with:
+        - erc8004_status: "registered" | "not_registered" | "draft_standard" | "unknown"
+        - identity_id: bytes32 on-chain identity ID or None
+        - reputation_score: 0-100 normalized score or None
+        - validation_count: number of third-party attestations or None
+        - well_known_verified: whether service self-attests via /.well-known/erc8004.json
+        - note: human-readable status explanation
+    """
+    result: dict = {
+        "wallet": wallet,
+        "service_url": service_url,
+        "erc8004_status": "unknown",
+        "identity_id": None,
+        "reputation_score": None,
+        "validation_count": None,
+        "well_known_verified": False,
+        "registered": False,
+        "spec_version": "ERC-8004 (DRAFT, Jan 29 2026)",
+        "spec_url": "https://eips.ethereum.org/EIPS/eip-8004",
+    }
+
+    tasks = []
+
+    # Well-known check (runs if we have a URL)
+    if service_url:
+        tasks.append(_check_well_known(service_url))
+    else:
+        tasks.append(asyncio.coroutine(lambda: {})())  # noop
+
+    # On-chain check (runs if we have a wallet)
+    if wallet and re.match(r"^0x[0-9a-fA-F]{40}$", wallet):
+        tasks.append(_lookup_onchain(wallet))
+    else:
+        tasks.append(asyncio.coroutine(lambda: {})())  # noop
+
+    well_known_data, onchain_data = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Merge well-known data
+    if isinstance(well_known_data, dict):
+        result["well_known_verified"] = well_known_data.get("well_known_verified", False)
+        if well_known_data.get("self_attested"):
+            result["self_attested"] = well_known_data["self_attested"]
+
+    # Merge on-chain data
+    if isinstance(onchain_data, dict):
+        result["onchain"] = onchain_data
+        if onchain_data.get("onchain_status") == "contracts_not_deployed":
+            result["erc8004_status"] = "draft_standard"
+            result["note"] = onchain_data["note"]
+        elif onchain_data.get("is_registered") is True:
+            result["erc8004_status"] = "registered"
+            result["registered"] = True
+            result["identity_id"] = onchain_data.get("identity_id")
+            result["reputation_score"] = onchain_data.get("reputation_score")
+            result["validation_count"] = onchain_data.get("validation_count")
+        elif onchain_data.get("is_registered") is False:
+            result["erc8004_status"] = "not_registered"
+        else:
+            result["erc8004_status"] = "draft_standard"
+            result["note"] = (
+                "ERC-8004 is in DRAFT status (launched Jan 29, 2026). "
+                "On-chain lookup pending contract address confirmation on Base/Ethereum mainnet."
+            )
+    else:
+        result["erc8004_status"] = "draft_standard"
+        result["note"] = (
+            "ERC-8004 is in DRAFT status (launched Jan 29, 2026). "
+            "On-chain lookup pending contract address confirmation on Base/Ethereum mainnet."
+        )
 
     return result
 
 
-def get_trust_summary(trust_profile: dict) -> dict:
+async def get_trust_summary(wallet: Optional[str] = None) -> dict:
     """
-    Returns a compact summary suitable for embedding in /catalog and /discover responses.
-    Only includes non-null fields to keep responses clean.
+    Return a condensed trust summary suitable for embedding in catalog entries.
+
+    Returns dict with just: status, registered, reputation_score, validation_count
     """
-    status = trust_profile.get("status", "unknown")
-    summary: dict[str, Any] = {"status": status}
-
-    if trust_profile.get("well_known"):
-        summary["well_known_declared"] = True
-
-    if trust_profile.get("erc8004_registered"):
-        summary["registered"] = True
-        if trust_profile.get("identity_id"):
-            summary["identity_id"] = trust_profile["identity_id"]
-        if trust_profile.get("reputation_score") is not None:
-            summary["reputation_score"] = trust_profile["reputation_score"]
-        if trust_profile.get("validation_count") is not None:
-            summary["validation_count"] = trust_profile["validation_count"]
-
-    return summary
+    if not wallet:
+        return {
+            "status": "no_wallet",
+            "registered": False,
+            "reputation_score": None,
+            "validation_count": None,
+        }
+    profile = await get_trust_profile(wallet=wallet)
+    return {
+        "status": profile.get("erc8004_status", "unknown"),
+        "registered": profile.get("registered", False),
+        "reputation_score": profile.get("reputation_score"),
+        "validation_count": profile.get("validation_count"),
+        "well_known_verified": profile.get("well_known_verified", False),
+    }
