@@ -300,10 +300,11 @@ def checkout_and_reset(branch: str, reason: str = "unspecified",
         )
         return False, msg
 
-    # Use -B to create-or-reset the branch, avoiding ambiguity with directories
-    # that share the branch name (e.g. ouroboros/ package dir vs ouroboros branch).
+    # Use -f -B to force-create-or-reset the branch, discarding any local
+    # modifications (rescue snapshot already saved above if policy != ignore).
+    # -f is needed when uncommitted changes would otherwise block the checkout.
     subprocess.run(
-        ["git", "checkout", "-B", branch, f"origin/{branch}"],
+        ["git", "checkout", "-f", "-B", branch, f"origin/{branch}"],
         cwd=str(REPO_DIR), check=True,
     )
     # Clean __pycache__ to prevent stale bytecode (git checkout may not update mtime)
