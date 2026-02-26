@@ -31,6 +31,13 @@ from pydantic import BaseModel, field_validator
 
 load_dotenv()
 
+try:
+    from fastmcp import FastMCP
+    from fastmcp.utilities.lifespan import combine_lifespans
+    FASTMCP_AVAILABLE = True
+except ImportError:
+    FASTMCP_AVAILABLE = False
+
 # Try to import scraper (optional dependency)
 try:
     from scraper import scrape_x402scan
@@ -492,11 +499,44 @@ async def _background_scraper() -> None:
 
 
 # ---------------------------------------------------------------------------
+# FastMCP Server (Smithery / proper MCP protocol transport)
+# ---------------------------------------------------------------------------
+
+if FASTMCP_AVAILABLE:
+    x402_mcp = FastMCP(
+        "x402 Service Discovery",
+        instructions=(
+            "Discovers x402-payable APIs for autonomous agents. "
+            "Use x402_discover to find endpoints that accept micropayments on Base. "
+            "Each call to x402_discover costs $0.005 USDC via x402 protocol."
+        ),
+    )
+
+    @x402_mcp.tool
+    async def x402_discover(query: str) -> dict:
+        """
+        Discover x402-payable services matching a query.
+
+        Searches the registry of x402-enabled APIs and returns matching endpoints
+        with quality signals (uptime, latency, payment details).
+
+        Args:
+            query: Natural language or keyword search (e.g. 'weather', 'llm', 'research')
+
+        Returns:
+            dict with 'results' (list of matching services) and 'count'
+        """
+        results = _search(query, None, None, 5)
+        return {"results": results, "count": len(results), "query": query}
+
+    _mcp_http_app = x402_mcp.http_app(path="/")
+
+# ---------------------------------------------------------------------------
 # App lifespan
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _app_lifespan(app: FastAPI):
     init_db()
     log.info("SQLite health DB initialized at %s", DB_PATH)
     health_task = asyncio.create_task(_background_health_checker())
@@ -511,6 +551,11 @@ async def lifespan(app: FastAPI):
             await t
         except asyncio.CancelledError:
             pass
+
+if FASTMCP_AVAILABLE:
+    lifespan = combine_lifespans(_app_lifespan, _mcp_http_app.lifespan)
+else:
+    lifespan = _app_lifespan
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -527,6 +572,11 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Mount FastMCP server for Smithery / proper MCP protocol transport
+if FASTMCP_AVAILABLE:
+    app.mount("/smithery", _mcp_http_app)
+    log.info("FastMCP server mounted at /smithery — MCP endpoint: /smithery/mcp/")
 
 # ---------------------------------------------------------------------------
 # GET / — free
