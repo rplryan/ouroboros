@@ -7,7 +7,7 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: WALLET_ADDRESS
-        value: 0xBceC11f20904a30fC4bAF70B85fc33b7A9294683
+        sync: false  # Set in Render dashboard — do not commit wallet address to git
       - key: NETWORK
         value: base
       - key: QUERY_PRICE_USDC_UNITS
