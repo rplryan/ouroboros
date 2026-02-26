@@ -356,6 +356,7 @@ class OuroborosAgent:
             memory=self.memory,
             task=task,
             review_context_builder=self._build_review_context,
+            model=self.llm.default_model(),
         )
 
         if cap_info.get("trimmed_sections"):

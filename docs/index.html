@@ -147,6 +147,47 @@ section{padding:80px 0}
   .genesis{padding:20px}
   .arch-diagram{font-size:.65rem;padding:20px}
 }
+/* === x402 DEMO STRIP === */
+.x402-strip {
+  background: linear-gradient(135deg, rgba(0,229,255,.06), rgba(255,0,255,.06));
+  border-top: 1px solid rgba(0,229,255,.2);
+  border-bottom: 1px solid rgba(0,229,255,.2);
+  padding: 20px;
+  margin: 8px 0 24px;
+}
+.x402-strip-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.x402-strip-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #00e5ff;
+  margin-bottom: 4px;
+}
+.x402-strip-sub {
+  font-size: .82rem;
+  color: #6a6a8a;
+  max-width: 560px;
+}
+.x402-strip-btn {
+  background: linear-gradient(135deg, #00e5ff, #00aaff);
+  color: #000;
+  font-weight: 700;
+  font-size: .88rem;
+  padding: 10px 22px;
+  border-radius: 8px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: opacity .15s, transform .1s;
+  flex-shrink: 0;
+}
+.x402-strip-btn:hover { opacity: .85; transform: translateY(-1px); }
 </style>
 </head>
 <body>
@@ -181,6 +222,16 @@ section{padding:80px 0}
 </div>
 
 <div style="text-align:center;font-size:.7rem;color:var(--dim);padding:8px 0 16px" id="data-freshness"></div>
+<!-- x402 DEMO STRIP -->
+<div class="x402-strip">
+  <div class="x402-strip-inner">
+    <div class="x402-strip-text">
+      <div class="x402-strip-title">⚡ x402 Service Discovery</div>
+      <div class="x402-strip-sub">Browse live x402-payable APIs. Autonomous agents find and pay for services via USDC micropayments on Base.</div>
+    </div>
+    <a href="demo.html" class="x402-strip-btn">Try Live Demo →</a>
+  </div>
+</div>
 <!-- GENESIS LOG -->
 <section>
   <div class="genesis">

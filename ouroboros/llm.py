@@ -14,7 +14,54 @@ from typing import Any, Dict, List, Optional, Tuple
 
 log = logging.getLogger(__name__)
 
-DEFAULT_LIGHT_MODEL = "google/gemini-3-pro-preview"
+DEFAULT_LIGHT_MODEL = "google/gemini-2.5-flash"
+
+# Context window limits per model (in tokens)
+# Used to set model-aware soft caps in context.py
+MODEL_CONTEXT_WINDOWS: Dict[str, int] = {
+    "anthropic/claude-sonnet-4.6":        200_000,
+    "anthropic/claude-sonnet-4.5":        200_000,
+    "anthropic/claude-sonnet-4":          200_000,
+    "anthropic/claude-opus-4.6":          200_000,
+    "anthropic/claude-opus-4":            200_000,
+    "google/gemini-2.5-pro-preview":    1_048_576,
+    "google/gemini-3-pro-preview":      1_048_576,
+    "google/gemini-2.5-flash":          1_048_576,
+    "google/gemini-2.0-flash-001":      1_048_576,
+    "google/gemini-1.5-pro-latest":     1_048_576,
+    "google/gemini-1.5-flash-latest":   1_048_576,
+    "openai/gpt-4.1":                     128_000,
+    "openai/gpt-4.1-mini":               128_000,
+    "openai/gpt-5.2":                     128_000,
+    "openai/o3":                          200_000,
+    "openai/o4-mini":                     200_000,
+    "meta-llama/llama-3.3-70b-instruct":  128_000,
+    "x-ai/grok-3-mini":                   131_072,
+    "qwen/qwen3.5-plus-02-15":            128_000,
+}
+
+_COMPLETION_RESERVE = 8_192  # tokens reserved for model completion
+
+
+def get_context_window(model: str) -> int:
+    """
+    Return the context window size (in tokens) for a given model.
+
+    Uses exact match first, then longest-prefix match, then defaults to 200k.
+    """
+    if not model:
+        return 200_000
+    # Exact match
+    if model in MODEL_CONTEXT_WINDOWS:
+        return MODEL_CONTEXT_WINDOWS[model]
+    # Longest prefix match (handles versioned suffixes like :free, :nitro, etc.)
+    best_match = 200_000
+    best_length = 0
+    for key, val in MODEL_CONTEXT_WINDOWS.items():
+        if model.startswith(key) and len(key) > best_length:
+            best_match = val
+            best_length = len(key)
+    return best_match
 
 
 def normalize_reasoning_effort(value: str, default: str = "medium") -> str:

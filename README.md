@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.2.0 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.2.5 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -223,17 +223,28 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
-### v6.2.0 -- Critical Bugfixes + LLM-First Dedup
-- **Fix: worker_id==0 hard-timeout bug** -- `int(x or -1)` treated worker 0 as -1, preventing terminate on timeout and causing double task execution. Replaced all `x or default` patterns with None-safe checks.
-- **Fix: double budget accounting** -- per-task aggregate `llm_usage` event removed; per-round events already track correctly. Eliminates ~2x budget drift.
-- **Fix: compact_context tool** -- handler had wrong signature (missing ctx param), making it always error. Now works correctly.
-- **LLM-first task dedup** -- replaced hardcoded keyword-similarity dedup (Bible P3 violation) with light LLM call via OUROBOROS_MODEL_LIGHT. Catches paraphrased duplicates.
-- **LLM-driven context compaction** -- compact_context tool now uses light model to summarize old tool results instead of simple truncation.
-- **Fix: health invariant #5** -- `owner_message_injected` events now properly logged to events.jsonl for duplicate processing detection.
-- **Fix: shell cmd parsing** -- `str.split()` replaced with `shlex.split()` for proper shell quoting support.
-- **Fix: retry task_id** -- timeout retries now get a new task_id with `original_task_id` lineage tracking.
-- **claude_code_edit timeout** -- aligned subprocess and tool wrapper to 300s.
-- **Direct chat guard** -- `schedule_task` from direct chat now logged as warning for audit.
+### v6.2.5 -- MCP Streamable HTTP transport
+- **MCP Streamable HTTP transport**: proper JSON-RPC 2.0 `/smithery` endpoint for Smithery.ai listing; extracted `mcp_transport.py` module
+
+### v6.2.4 -- Extract pricing.py (Principle 5)
+- **New `ouroboros/pricing.py`**: Extracted `_MODEL_PRICING_STATIC`, `get_pricing()`, and `estimate_cost()` from `loop.py` into a dedicated module. `loop.py` reduced from 984 → 894 lines, staying within the 1000-line complexity budget (Principle 5: Minimalism).
+
+### v6.2.3 -- Model-Aware Context Windows
+- **`llm.py`**: Added `MODEL_CONTEXT_WINDOWS` dict mapping models to their context window sizes (200k for Claude/GPT, 1M for Gemini), plus `_COMPLETION_RESERVE = 8_192` and `get_context_window(model)` helper with exact-match + prefix-match fallback
+- **`context.py`**: `build_llm_messages` now accepts optional `model=` param; sets `soft_cap = max(200_000, context_window - 8_192)` dynamically — Gemini models now use ~1M token context, Claude/GPT unchanged
+- **`agent.py`**: Passes `model=self.llm.default_model()` to `build_llm_messages` at context-build time
+
+### v6.2.2 -- Model Config Update
+- **Fix env**: `OUROBOROS_MODEL_LIGHT` corrected to `google/gemini-2.5-flash` (was overriding v6.2.1 code fix with expensive `gemini-2.5-pro-preview`)
+- **Fix env**: Model IDs use canonical dot form (`claude-sonnet-4.6`, not `4-6`)
+- **Fallback list**: `claude-sonnet-4.6` → `gemini-2.5-flash` → `gpt-4.1` → `llama-3.3-70b-instruct` (diverse providers, cost-graduated)
+- **Pricing table**: Added `gpt-4.1-mini`, `llama-3.3-70b-instruct`, `gemini-2.0-flash-001` to `_MODEL_PRICING_STATIC`
+
+### v6.2.1 -- Model Updates
+- **DEFAULT_LIGHT_MODEL updated**: Changed default light model from `google/gemini-3-pro-preview` to `google/gemini-2.5-flash` — 6-7x cheaper ($0.30/$2.50 vs $2/$12 per M tokens) and more appropriate for lightweight tasks (dedup, context compaction, background consciousness).
+- **Pricing table**: Added `google/gemini-2.5-flash` to `_MODEL_PRICING_STATIC` in `loop.py`.
+- Also update example config in Quick Start: change `"OUROBOROS_MODEL_LIGHT": "google/gemini-3-pro-preview"` to `"OUROBOROS_MODEL_LIGHT": "google/gemini-2.5-flash"` and the fallback list entry too.
+- In the Configuration table, update the `OUROBOROS_MODEL_LIGHT` default value from `google/gemini-3-pro-preview` to `google/gemini-2.5-flash`.
 
 ### v6.1.0 -- Budget Optimization: Selective Schemas + Self-Check + Dedup
 - **Selective tool schemas** -- core tools (~29) always in context, 23 others available via `list_available_tools`/`enable_tools`. Saves ~40% schema tokens per round.
@@ -288,67 +299,17 @@ Full text: [BIBLE.md](BIBLE.md)
 - Added `tests/test_constitution.py`: 12 adversarial scenario tests.
 - Multi-model review passed (claude-opus-4.6, o3, gemini-2.5-pro).
 
-### v5.1.6
-- Background consciousness model default changed to qwen/qwen3.5-plus-02-15 (5x cheaper than Gemini-3-Pro, $0.40 vs $2.0/MTok).
-
-### v5.1.5 -- claude-sonnet-4.6 as default model
-- Benchmarked `anthropic/claude-sonnet-4.6` vs `claude-sonnet-4`: 30ms faster, parallel tool calls, identical pricing.
-- Updated all default model references across codebase.
-- Updated multi-model review ensemble to `gemini-2.5-pro,o3,claude-sonnet-4.6`.
-
-### v5.1.4 -- Knowledge Re-index + Prompt Hardening
-- Re-indexed all 27 knowledge base topics with rich, informative summaries.
-- Added `index-full` knowledge topic with full 3-line descriptions of all topics.
-- SYSTEM.md: Strengthened tool result processing protocol with warning and 5 anti-patterns.
-- SYSTEM.md: Knowledge base section now has explicit "before task: read, after task: write" protocol.
-- SYSTEM.md: Task decomposition section restored to full structured form with examples.
-
-### v5.1.3 -- Message Dispatch Critical Fix
-- **Dead-code batch path fixed**: `handle_chat_direct()` was never called -- `else` was attached to wrong `if`.
-- **Early-exit hardened**: replaced fragile deadline arithmetic with elapsed-time check.
-- **Drive I/O eliminated**: `load_state()`/`save_state()` moved out of per-update tight loop.
-- **Burst batching**: deadline extends +0.3s per rapid-fire message.
-- Multi-model review passed (claude-opus-4.6, o3, gemini-2.5-pro).
-- 102 tests green.
-
 ### v5.1.0 -- VLM + Knowledge Index + Desync Fix
 - **VLM support**: `vision_query()` in llm.py + `analyze_screenshot` / `vlm_query` tools.
 - **Knowledge index**: richer 3-line summaries so topics are actually useful at-a-glance.
 - **Desync fix**: removed echo bug where owner inject messages were sent back to Telegram.
 - 101 tests green (+10 VLM tests).
 
-### v5.0.2 -- DeepSeek Ban + Desync Fix
-- DeepSeek removed from `fetch_openrouter_pricing` prefixes (banned per creator directive).
-- Desync bug fix: owner messages during running tasks now forwarded via Drive-based mailbox (`owner_inject.py`).
-- Worker loop checks Drive mailbox every round -- injected as user messages into context.
-- Only affects worker tasks (not direct chat, which uses in-memory queue).
-
-### v5.0.1 -- Quality & Integrity Fix
-- Fixed 9 bugs: executor leak, dashboard field mismatches, budget default inconsistency, dead code, race condition, pricing fetch gap, review file count, SHA verify timeout, log message copy-paste.
-- Bible P7: version sync check now includes README.md.
-- Bible P3: fallback model list configurable via OUROBOROS_MODEL_FALLBACK_LIST env var.
-- Dashboard values now dynamic (model, tests, tools, uptime, consciousness).
-- Merged duplicate state dict definitions (single source of truth).
-- Unified TOTAL_BUDGET default to $1 across all modules.
-
 ### v4.26.0 -- Task Decomposition
 - Task decomposition: `schedule_task` -> `wait_for_task` -> `get_task_result`.
 - Hard round limit (MAX_ROUNDS=200) -- prevents runaway tasks.
 - Task results stored on Drive for cross-task communication.
 - 91 smoke tests -- all green.
-
-### v4.24.1 -- Consciousness Always On
-- Background consciousness auto-starts on boot.
-
-### v4.24.0 -- Deep Review Bugfixes
-- Circuit breaker for evolution (3 consecutive empty responses -> pause).
-- Fallback model chain fix (works when primary IS the fallback).
-- Budget tracking for empty responses.
-- Multi-model review passed (o3, Gemini 2.5 Pro).
-
-### v4.23.0 -- Empty Response Fallback
-- Auto-fallback to backup model on repeated empty responses.
-- Raw response logging for debugging.
 
 ---
 

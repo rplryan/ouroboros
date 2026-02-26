@@ -282,6 +282,7 @@ def build_llm_messages(
     memory: Memory,
     task: Dict[str, Any],
     review_context_builder: Optional[Any] = None,
+    model: str = "",
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     Build the full LLM message context for a task.
@@ -388,8 +389,13 @@ def build_llm_messages(
         {"role": "user", "content": _build_user_content(task)},
     ]
 
-    # --- Soft-cap token trimming ---
-    messages, cap_info = apply_message_token_soft_cap(messages, 200000)
+    # Model-aware soft cap: use full context window minus completion reserve
+    from ouroboros.llm import get_context_window, _COMPLETION_RESERVE
+    context_window = get_context_window(model)
+    soft_cap = max(200_000, context_window - _COMPLETION_RESERVE)
+    if context_window > 200_000:
+        log.debug("Using extended context window: model=%s window=%d soft_cap=%d", model, context_window, soft_cap)
+    messages, cap_info = apply_message_token_soft_cap(messages, soft_cap)
 
     return messages, cap_info
 

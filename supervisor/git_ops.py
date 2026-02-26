@@ -300,8 +300,13 @@ def checkout_and_reset(branch: str, reason: str = "unspecified",
         )
         return False, msg
 
-    subprocess.run(["git", "checkout", branch], cwd=str(REPO_DIR), check=True)
-    subprocess.run(["git", "reset", "--hard", f"origin/{branch}"], cwd=str(REPO_DIR), check=True)
+    # Use -f -B to force-create-or-reset the branch, discarding any local
+    # modifications (rescue snapshot already saved above if policy != ignore).
+    # -f is needed when uncommitted changes would otherwise block the checkout.
+    subprocess.run(
+        ["git", "checkout", "-f", "-B", branch, f"origin/{branch}"],
+        cwd=str(REPO_DIR), check=True,
+    )
     # Clean __pycache__ to prevent stale bytecode (git checkout may not update mtime)
     for p in REPO_DIR.rglob("__pycache__"):
         shutil.rmtree(p, ignore_errors=True)

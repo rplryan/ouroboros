@@ -1,0 +1,10 @@
+# Smithery server configuration
+# https://smithery.ai/docs/build/session-config
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    properties: {}
+    required: []
+  exampleConfig: {}
+  url: https://x402-discovery-api.onrender.com/smithery

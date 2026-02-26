@@ -8,6 +8,29 @@ from typing import Any, Dict, List
 
 from ouroboros.tools.registry import ToolContext, ToolEntry
 
+# OpenAI Responses API uses native model names (no "openai/" prefix).
+# Supported web_search models as of 2026: gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano
+_WEBSEARCH_MODEL_MAP = {
+    "openai/gpt-4.1-mini": "gpt-4.1-mini",
+    "openai/gpt-4.1": "gpt-4.1",
+    "openai/gpt-4.1-nano": "gpt-4.1-nano",
+    "openai/gpt-4o": "gpt-4o",
+    "openai/gpt-4o-mini": "gpt-4o-mini",
+    "openai/gpt-5": "gpt-4.1",  # fallback
+    "gpt-5": "gpt-4.1",         # fallback
+}
+_DEFAULT_MODEL = "gpt-4o-mini"
+
+
+def _resolve_model(raw: str) -> str:
+    """Strip OpenRouter-style prefix and map to valid OpenAI Responses API model."""
+    if raw in _WEBSEARCH_MODEL_MAP:
+        return _WEBSEARCH_MODEL_MAP[raw]
+    # Strip "openai/" prefix if present
+    if raw.startswith("openai/"):
+        return raw[len("openai/"):]
+    return raw
+
 
 def _web_search(ctx: ToolContext, query: str) -> str:
     api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -16,8 +39,10 @@ def _web_search(ctx: ToolContext, query: str) -> str:
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
+        raw_model = os.environ.get("OUROBOROS_WEBSEARCH_MODEL", _DEFAULT_MODEL)
+        model = _resolve_model(raw_model)
         resp = client.responses.create(
-            model=os.environ.get("OUROBOROS_WEBSEARCH_MODEL", "gpt-5"),
+            model=model,
             tools=[{"type": "web_search"}],
             tool_choice="auto",
             input=query,
