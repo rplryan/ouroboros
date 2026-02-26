@@ -898,15 +898,50 @@ async def smithery_server_card(request: Request) -> JSONResponse:
         {
             "serverInfo": {
                 "name": "x402 Service Discovery",
-                "version": "3.1.0"
+                "version": "3.1.0",
+                "description": "Discover, evaluate, and connect to x402-payable APIs. Enables autonomous agents to find services, check quality signals (uptime/latency), and verify ERC-8004 on-chain trust profiles."
             },
             "authentication": {
                 "required": False
             },
+            "configSchema": {
+                "type": "object",
+                "properties": {
+                    "baseUrl": {
+                        "type": "string",
+                        "title": "Custom API Base URL",
+                        "description": "Override the default API endpoint (for self-hosted instances)",
+                        "default": "https://x402-discovery-api.onrender.com"
+                    },
+                    "maxResults": {
+                        "type": "integer",
+                        "title": "Max Results",
+                        "description": "Maximum number of results per discovery query",
+                        "default": 5,
+                        "minimum": 1,
+                        "maximum": 20
+                    },
+                    "minUptimePct": {
+                        "type": "number",
+                        "title": "Minimum Uptime %",
+                        "description": "Only return services with uptime above this threshold (0-100)",
+                        "default": 0,
+                        "minimum": 0,
+                        "maximum": 100
+                    }
+                }
+            },
             "tools": [
                 {
                     "name": "x402_discover",
-                    "description": "Discover x402-payable services matching a query. Searches the registry of x402-enabled APIs and returns matching endpoints with quality signals (uptime, latency, payment details). Each query costs $0.005 USDC via x402 protocol.",
+                    "title": "Discover x402 Services",
+                    "description": "Discover x402-payable services matching a query. Returns matching endpoints with quality signals (uptime, latency, payment details). Each query costs $0.005 USDC via x402 protocol.",
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": True
+                    },
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -920,17 +955,25 @@ async def smithery_server_card(request: Request) -> JSONResponse:
                 },
                 {
                     "name": "x402_browse",
-                    "description": "Browse all registered x402-payable services with optional filtering by category. Returns the full catalog for free.",
+                    "title": "Browse All x402 Services",
+                    "description": "Browse all registered x402-payable services with optional filtering by category. Returns the full catalog for free — no payment required.",
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": True
+                    },
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "category": {
                                 "type": "string",
-                                "description": "Optional category filter (e.g. 'data', 'compute', 'research')"
+                                "description": "Optional category filter: data, compute, research, agent, utility"
                             },
                             "limit": {
                                 "type": "integer",
-                                "description": "Max results to return (default 20)"
+                                "description": "Max results to return (default 20)",
+                                "default": 20
                             }
                         },
                         "required": []
@@ -938,7 +981,14 @@ async def smithery_server_card(request: Request) -> JSONResponse:
                 },
                 {
                     "name": "x402_health",
-                    "description": "Check the health and uptime statistics of a specific x402 service by URL or service ID.",
+                    "title": "Check Service Health",
+                    "description": "Check the health and uptime statistics of a specific x402 service by URL. Free — no payment required.",
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": True
+                    },
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -951,8 +1001,36 @@ async def smithery_server_card(request: Request) -> JSONResponse:
                     }
                 },
                 {
+                    "name": "x402_trust",
+                    "title": "Check ERC-8004 Trust Profile",
+                    "description": "Get the ERC-8004 on-chain trust profile for a service or wallet. Returns identity verification, reputation score, and third-party attestations. Free — no payment required.",
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": True
+                    },
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "wallet_or_url": {
+                                "type": "string",
+                                "description": "Ethereum wallet address (0x...) or service URL to look up"
+                            }
+                        },
+                        "required": ["wallet_or_url"]
+                    }
+                },
+                {
                     "name": "x402_register",
-                    "description": "Register a new x402-payable service in the discovery registry. Free to register.",
+                    "title": "Register an x402 Service",
+                    "description": "Register a new x402-payable service in the discovery catalog. Free to register — no payment required.",
+                    "annotations": {
+                        "readOnlyHint": False,
+                        "destructiveHint": False,
+                        "idempotentHint": False,
+                        "openWorldHint": True
+                    },
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -966,23 +1044,73 @@ async def smithery_server_card(request: Request) -> JSONResponse:
                             },
                             "description": {
                                 "type": "string",
-                                "description": "What the service does"
+                                "description": "What the service does and what kind of data it returns"
                             },
                             "price_usd": {
                                 "type": "number",
-                                "description": "Price per call in USD"
+                                "description": "Price per request in USD (e.g. 0.005)"
                             },
                             "category": {
                                 "type": "string",
-                                "description": "Service category (data, compute, research, etc.)"
+                                "description": "Service category: data, compute, research, agent, utility"
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Capability tags (e.g. ['weather', 'forecast', 'real-time'])"
+                            },
+                            "wallet": {
+                                "type": "string",
+                                "description": "Ethereum wallet address that receives payments (optional)"
+                            },
+                            "network": {
+                                "type": "string",
+                                "description": "Network name (default: base)",
+                                "default": "base"
                             }
                         },
                         "required": ["url", "name", "description"]
                     }
                 }
             ],
-            "resources": [],
-            "prompts": []
+            "resources": [
+                {
+                    "uri": "x402://catalog",
+                    "name": "Service Catalog",
+                    "description": "Full registry of x402-payable services with quality signals",
+                    "mimeType": "application/json"
+                },
+                {
+                    "uri": "x402://docs",
+                    "name": "x402 Protocol Docs",
+                    "description": "Documentation for the x402 HTTP payment standard",
+                    "mimeType": "text/html"
+                }
+            ],
+            "prompts": [
+                {
+                    "name": "find_service_for_task",
+                    "description": "Find the best x402 service for a specific task",
+                    "arguments": [
+                        {
+                            "name": "task",
+                            "description": "Description of what you need to accomplish",
+                            "required": True
+                        }
+                    ]
+                },
+                {
+                    "name": "discover_and_verify",
+                    "description": "Discover and verify an x402 service by capability, then check health before use",
+                    "arguments": [
+                        {
+                            "name": "capability",
+                            "description": "The capability you need (e.g. 'web search', 'data extraction')",
+                            "required": True
+                        }
+                    ]
+                }
+            ]
         },
         media_type="application/json",
         headers={"Cache-Control": "public, max-age=3600"}
