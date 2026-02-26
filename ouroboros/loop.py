@@ -366,15 +366,52 @@ def _maybe_inject_self_check(
     messages: List[Dict[str, Any]],
     accumulated_usage: Dict[str, Any],
     emit_progress: Callable[[str], None],
+    task_type: str = "task",
 ) -> None:
-    """Inject a soft self-check reminder every REMINDER_INTERVAL rounds.
+    """Inject self-check reminders at key round milestones.
 
-    This is a cognitive feature (Bible P0: subjectivity) — the agent reflects
-    on its own resource usage and strategy, not a hard kill.
+    Three tiers:
+    - Round 8: early check — did I answer the original question yet?
+    - Round 15: mid-task check — am I on the right path?
+    - Every 50 rounds: deep checkpoint — full strategic reflection.
+
+    LLM-first (Bible P0+P3): the agent decides what to do, not the code.
     """
-    REMINDER_INTERVAL = 50
-    if round_idx <= 1 or round_idx % REMINDER_INTERVAL != 0:
+    # Skip checks for short/simple task types
+    if task_type in ("consciousness", "review") and round_idx <= 15:
         return
+
+    # ── Early check (round 8) ────────────────────────────────────────────────
+    if round_idx == 8:
+        reminder = (
+            "[EARLY CHECK — round 8]\n"
+            "Before continuing:\n"
+            "1. Have I actually answered the original question/request yet?\n"
+            "2. Am I gathering more info than I need, or can I answer now?\n"
+            "If the answer is in reach → respond. If genuinely blocked → say why."
+        )
+        messages.append({"role": "system", "content": reminder})
+        return  # Early return — don't fall through to other checks
+
+    # ── Mid-task check (round 15) ────────────────────────────────────────────
+    if round_idx == 15:
+        task_cost = accumulated_usage.get("cost", 0)
+        reminder = (
+            f"[MID-TASK CHECK — round 15 | ${task_cost:.2f} spent]\n"
+            "Pause:\n"
+            "1. Is this task converging toward a concrete result?\n"
+            "2. Am I stuck in a loop (same tool, slightly different args)?\n"
+            "3. Would a simpler approach work?\n"
+            "If stuck → change strategy or finish with what you have."
+        )
+        messages.append({"role": "system", "content": reminder})
+        return
+
+    # ── Deep checkpoint (every 50 rounds) ────────────────────────────────────
+    DEEP_INTERVAL = 50
+    if round_idx <= 1 or round_idx % DEEP_INTERVAL != 0:
+        return
+
     ctx_tokens = sum(
         estimate_tokens(str(m.get("content", "")))
         if isinstance(m.get("content"), str)
@@ -382,7 +419,7 @@ def _maybe_inject_self_check(
         for m in messages
     )
     task_cost = accumulated_usage.get("cost", 0)
-    checkpoint_num = round_idx // REMINDER_INTERVAL
+    checkpoint_num = round_idx // DEEP_INTERVAL
 
     reminder = (
         f"[CHECKPOINT {checkpoint_num} — round {round_idx}/{max_rounds}]\n"
@@ -578,7 +615,7 @@ def run_llm_loop(
                     return finish_reason, accumulated_usage, llm_trace
 
             # Soft self-check reminder every 50 rounds (LLM-first: agent decides, not code)
-            _maybe_inject_self_check(round_idx, MAX_ROUNDS, messages, accumulated_usage, emit_progress)
+            _maybe_inject_self_check(round_idx, MAX_ROUNDS, messages, accumulated_usage, emit_progress, task_type=task_type)
 
             # Apply LLM-driven model/effort switch (via switch_model tool)
             ctx = tools._ctx
