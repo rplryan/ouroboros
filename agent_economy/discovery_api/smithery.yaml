@@ -1,0 +1,49 @@
+# Smithery.ai MCP Server Configuration
+# https://smithery.ai/docs/publishing
+
+name: x402-discovery
+version: 1.0.0
+description: "Runtime x402 service discovery for the agent economy. Find and call any x402-payable API endpoint by capability — ranked by uptime, latency, and quality signals. The discovery query itself is x402-gated ($0.001 USDC on Base)."
+
+# MCP server entrypoint
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      wallet_address:
+        type: string
+        description: "Your Base wallet address for x402 payments (USDC on Base)"
+        default: ""
+      max_price_usd:
+        type: number
+        description: "Maximum price per discovery query in USD"
+        default: 0.01
+    required: []
+  commandFunction: |
+    (config) => ({
+      command: "python3",
+      args: ["-m", "mcp_server"],
+      env: {
+        WALLET_ADDRESS: config.wallet_address || "",
+        MAX_PRICE_USD: String(config.max_price_usd || 0.01)
+      }
+    })
+
+# Tool descriptions (for directory display)
+tools:
+  - name: x402_discover
+    description: "Find x402-payable services by capability keyword. Returns quality-ranked results with uptime%, latency, pricing. Costs $0.001 USDC per query via x402."
+  - name: x402_browse
+    description: "Browse the full catalog of registered x402 services by category. Free, no payment required."
+  - name: x402_health
+    description: "Check real-time health status of any registered x402 service. Free."
+  - name: x402_register
+    description: "Register a new x402 service with the discovery index. Free."
+  - name: list_gated_tools
+    description: "List all tools available through the x402 payment gateway with pricing."
+
+# Links
+repository: https://github.com/p-a-r-a-m-e-t-e-r/ouroboros
+homepage: https://x402-discovery-api.onrender.com
+documentation: https://x402-discovery-api.onrender.com/docs
