@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "x402discovery"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python client for the x402 Service Discovery API — find x402-payable endpoints for autonomous agents"
 authors = [{name = "Ouroboros", email = "ouroboros.discovery@gmail.com"}]
 license = {text = "MIT"}

@@ -1,18 +1,19 @@
 """
 x402discovery — Python client for the x402 Service Discovery API.
 
-The discovery API is itself x402-gated: discovery queries cost $0.001 USDC.
 Browse (catalog listing) and health checks are free.
+The /discover endpoint is x402-gated ($0.005 USDC); this client uses /catalog
+and filters locally so discover() works without any payment setup.
 
 Usage:
     from x402discovery import discover, browse, health_check
 
     # Free: browse all services
-    services = browse(category="research")
+    services = browse()
 
-    # Paid: ranked discovery ($0.001 USDC per call)
-    # Requires x402 payment header (handled by facilitator or manual payment)
-    results = discover("real-time crypto prices", max_price=0.01)
+    # Free: filtered discovery (calls /catalog and filters locally)
+    results = discover(capability="research", max_price=0.10)
+    results = discover(query="crypto prices")
 
     # Free: live health check
     status = health_check("x402engine-crypto-prices")
@@ -21,9 +22,11 @@ Usage:
 import requests
 from typing import Optional, List, Dict, Any
 
-from .exceptions import PaymentRequired, ServiceNotFound, DiscoveryAPIError
+from .exceptions import ServiceNotFound, DiscoveryAPIError
 
 DEFAULT_BASE_URL = "https://x402-discovery-api.onrender.com"
+
+_QUALITY_RANK = {"gold": 0, "silver": 1, "bronze": 2, "unverified": 3}
 
 
 class X402DiscoveryClient:
@@ -33,117 +36,88 @@ class X402DiscoveryClient:
         self,
         base_url: str = DEFAULT_BASE_URL,
         timeout: int = 30,
-        x402_payment_header: Optional[str] = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self.x402_payment_header = x402_payment_header
         self._session = requests.Session()
         self._session.headers.update(
             {
-                "User-Agent": "x402discovery/0.1.0 python-requests",
+                "User-Agent": "x402discovery/0.1.1 python-requests",
                 "Accept": "application/json",
             }
         )
-        if x402_payment_header:
-            self._session.headers.update({"X-PAYMENT": x402_payment_header})
 
-    def browse(
-        self,
-        category: Optional[str] = None,
-        limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    def browse(self) -> List[Dict[str, Any]]:
         """
-        List registered services. Free — no payment required.
-
-        Args:
-            category: Filter by category (research|data|compute|agent|utility)
-            limit: Max results to return (default 50)
+        Return all registered services from /catalog. Free — no payment required.
 
         Returns:
-            List of service dicts with quality signals
+            List of endpoint dicts. Each dict has: id, name, description, url,
+            category, price_usd, network, tags, capability_tags, uptime_pct,
+            avg_latency_ms, status, health_status, llm_usage_prompt, etc.
         """
-        params: Dict[str, Any] = {"limit": limit}
-        if category:
-            params["category"] = category
-
         resp = self._session.get(
-            f"{self.base_url}/catalog", params=params, timeout=self.timeout
+            f"{self.base_url}/catalog", timeout=self.timeout
         )
-
         if resp.status_code == 200:
             data = resp.json()
-            services = (
-                data
-                if isinstance(data, list)
-                else data.get("services", data.get("endpoints", []))
-            )
-            return services
-
+            return data.get("endpoints", []) if isinstance(data, dict) else data
         raise DiscoveryAPIError(
             f"Catalog request failed: {resp.status_code} {resp.text[:200]}"
         )
 
     def discover(
         self,
-        query: str,
-        category: Optional[str] = None,
-        max_price: Optional[float] = None,
+        capability: Optional[str] = None,
+        max_price: float = 0.50,
+        query: Optional[str] = None,
         min_quality: Optional[str] = None,
-        limit: int = 10,
     ) -> List[Dict[str, Any]]:
         """
-        Search for x402 services by capability. Requires x402 payment ($0.001 USDC).
-
-        If no payment header is configured, raises PaymentRequired with payment details.
+        Discover x402 services by filtering the free catalog locally.
 
         Args:
-            query: Natural language search (e.g. "real-time crypto prices")
-            category: Filter by capability category
-            max_price: Maximum price per call in USD
-            min_quality: Minimum quality tier (unverified|bronze|silver|gold)
-            limit: Max results
+            capability: Filter by capability_tag or category
+                        (e.g. "research", "data", "compute", "monitoring")
+            max_price: Maximum price per call in USD (default 0.50)
+            query: Free-text search against service name and description
+            min_quality: Minimum health_status tier (gold|silver|bronze|unverified)
 
         Returns:
-            List of service dicts, quality-ranked by uptime and latency
-
-        Raises:
-            PaymentRequired: If no payment header configured
-            ServiceNotFound: If no services match
+            Matching services sorted by quality tier then price (cheapest first)
         """
-        params: Dict[str, Any] = {"q": query, "limit": limit}
-        if category:
-            params["category"] = category
-        if max_price is not None:
-            params["max_price"] = max_price
+        services = self.browse()
+
+        if capability:
+            services = [
+                s for s in services
+                if capability in s.get("capability_tags", [])
+                or s.get("category") == capability
+            ]
+
+        services = [s for s in services if (s.get("price_usd") or 999) <= max_price]
+
+        if query:
+            q = query.lower()
+            services = [
+                s for s in services
+                if q in s.get("name", "").lower()
+                or q in s.get("description", "").lower()
+            ]
+
         if min_quality:
-            params["min_quality"] = min_quality
+            min_rank = _QUALITY_RANK.get(min_quality, 3)
+            services = [
+                s for s in services
+                if _QUALITY_RANK.get(s.get("health_status", "unverified"), 3) <= min_rank
+            ]
 
-        resp = self._session.get(
-            f"{self.base_url}/discover", params=params, timeout=self.timeout
-        )
+        services.sort(key=lambda s: (
+            _QUALITY_RANK.get(s.get("health_status", "unverified"), 3),
+            s.get("price_usd") or 999,
+        ))
 
-        if resp.status_code == 402:
-            try:
-                payment_info = resp.json()
-            except Exception:
-                payment_info = {"raw": resp.text}
-            raise PaymentRequired(payment_info)
-
-        if resp.status_code == 200:
-            data = resp.json()
-            results = (
-                data
-                if isinstance(data, list)
-                else data.get("results", data.get("services", []))
-            )
-            if not results:
-                raise ServiceNotFound(f"No services found for query: {query!r}")
-            return results
-
-        raise DiscoveryAPIError(
-            f"Discovery request failed: {resp.status_code} {resp.text[:200]}"
-        )
+        return services
 
     def health_check(self, service_id: str) -> Dict[str, Any]:
         """
@@ -158,15 +132,31 @@ class X402DiscoveryClient:
         resp = self._session.get(
             f"{self.base_url}/health/{service_id}", timeout=self.timeout
         )
-
         if resp.status_code == 200:
             return resp.json()
         if resp.status_code == 404:
             raise ServiceNotFound(f"Service not found: {service_id!r}")
-
         raise DiscoveryAPIError(
             f"Health check failed: {resp.status_code} {resp.text[:200]}"
         )
+
+    def discover_and_execute(
+        self,
+        capability: Optional[str] = None,
+        max_price: float = 0.50,
+        query: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Discover services and return the best match ready for execution.
+
+        Note: Actually calling the selected service requires x402 payment setup
+        on the caller's side (construct the X-PAYMENT header via an x402 facilitator).
+
+        Returns:
+            The top-ranked matching service dict, or None if no matches.
+        """
+        results = self.discover(capability=capability, max_price=max_price, query=query)
+        return results[0] if results else None
 
     def register(
         self,
@@ -208,10 +198,8 @@ class X402DiscoveryClient:
         resp = self._session.post(
             f"{self.base_url}/register", json=payload, timeout=self.timeout
         )
-
         if resp.status_code in (200, 201):
             return resp.json()
-
         raise DiscoveryAPIError(
             f"Registration failed: {resp.status_code} {resp.text[:200]}"
         )
@@ -219,7 +207,6 @@ class X402DiscoveryClient:
     def well_known(self) -> Dict[str, Any]:
         """
         Fetch the /.well-known/x402-discovery index. Free, machine-readable.
-        Implements RFC 5785 well-known URL for x402 service discovery.
         """
         resp = self._session.get(
             f"{self.base_url}/.well-known/x402-discovery", timeout=self.timeout
@@ -231,33 +218,49 @@ class X402DiscoveryClient:
         )
 
 
-# Module-level convenience functions using a default client
+# Module-level convenience functions using a shared default client
 _default_client = X402DiscoveryClient()
 
 
 def discover(
-    query: str,
-    category: Optional[str] = None,
-    max_price: Optional[float] = None,
-    limit: int = 10,
-    payment_header: Optional[str] = None,
+    capability: Optional[str] = None,
+    max_price: float = 0.50,
+    query: Optional[str] = None,
+    min_quality: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Module-level convenience: discover x402 services."""
-    client = (
-        X402DiscoveryClient(x402_payment_header=payment_header)
-        if payment_header
-        else _default_client
+    """
+    Discover x402 services by filtering the free /catalog locally.
+
+    Args:
+        capability: Filter by capability_tag or category
+        max_price: Maximum price per call in USD (default 0.50)
+        query: Free-text search against name and description
+        min_quality: Minimum health_status tier (gold|silver|bronze|unverified)
+
+    Returns:
+        Matching services sorted by quality tier then price
+    """
+    return _default_client.discover(
+        capability=capability, max_price=max_price, query=query, min_quality=min_quality
     )
-    return client.discover(query, category=category, max_price=max_price, limit=limit)
 
 
-def browse(
-    category: Optional[str] = None, limit: int = 50
-) -> List[Dict[str, Any]]:
-    """Module-level convenience: browse the free catalog."""
-    return _default_client.browse(category=category, limit=limit)
+def browse() -> List[Dict[str, Any]]:
+    """Return all services from the free /catalog endpoint."""
+    return _default_client.browse()
 
 
 def health_check(service_id: str) -> Dict[str, Any]:
-    """Module-level convenience: check service health."""
+    """Live health check for a registered service. Free."""
     return _default_client.health_check(service_id)
+
+
+def discover_and_execute(
+    capability: Optional[str] = None,
+    max_price: float = 0.50,
+    query: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Discover the best matching service and return it ready for execution."""
+    return _default_client.discover_and_execute(
+        capability=capability, max_price=max_price, query=query
+    )
