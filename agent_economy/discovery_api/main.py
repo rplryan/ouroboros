@@ -890,7 +890,7 @@ async def well_known_x402_json():
     }
 
 
-_SMITHERY_SERVER_CARD = {
+SMITHERY_SERVER_CARD = {
     "serverInfo": {
         "name": "x402 Service Discovery",
         "version": "3.1.0",
@@ -1114,7 +1114,7 @@ async def smithery_server_card(request: Request) -> JSONResponse:
     """Static server card for Smithery scanner — bypasses x402 payment gate.
     See: https://smithery.ai/docs/build/publish (Static Server Card section)"""
     return JSONResponse(
-        _SMITHERY_SERVER_CARD,
+        SMITHERY_SERVER_CARD,
         media_type="application/json",
         headers={"Cache-Control": "public, max-age=3600"}
     )
