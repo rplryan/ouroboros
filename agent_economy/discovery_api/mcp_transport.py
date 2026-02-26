@@ -89,6 +89,23 @@ MCP_TOOLS = [
             "required": ["name", "url", "description", "price_usd", "category"],
         },
     },
+    {
+        "name": "x402_trust",
+        "description": "Look up the ERC-8004 trust profile for an x402 service. Returns on-chain identity, reputation score, validation attestations, and well-known verification status. Free — no payment required.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "wallet": {
+                    "type": "string",
+                    "description": "Ethereum/Base wallet address (0x...) to look up",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "Service URL to check /.well-known/erc8004.json verification",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -111,6 +128,7 @@ async def _handle_mcp_tool_call(
     save_fn: Callable,
     query_price_units: str,
     payment_required_body_fn: Callable,
+    trust_fn: Callable,
 ) -> dict:
     """Execute an MCP tool call and return the result content."""
     if tool_name == "x402_browse":
@@ -220,6 +238,15 @@ async def _handle_mcp_tool_call(
             "text": json.dumps({"results": results, "count": len(results)}, indent=2),
         }
 
+    elif tool_name == "x402_trust":
+        wallet = arguments.get("wallet")
+        url_arg = arguments.get("url")
+        if not wallet and not url_arg:
+            return {"type": "text", "text": json.dumps({"error": "Provide wallet address or url"})}
+        import asyncio
+        profile = await trust_fn(wallet=wallet, service_url=url_arg)
+        return {"type": "text", "text": json.dumps(profile, indent=2)}
+
     else:
         return {"type": "text", "text": json.dumps({"error": f"Unknown tool: {tool_name}"}), "isError": True}
 
@@ -240,6 +267,7 @@ def create_mcp_router(
     save_fn: Callable,
     query_price_units: str,
     payment_required_body_fn: Callable,
+    trust_fn: Callable,
 ) -> APIRouter:
     """Create and return an APIRouter with MCP Streamable HTTP transport routes."""
     router = APIRouter()
@@ -278,13 +306,14 @@ def create_mcp_router(
                     },
                     "serverInfo": {
                         "name": "x402-discovery",
-                        "version": "3.0.0",
+                        "version": "3.1.0",
                     },
                     "instructions": (
                         "x402 Service Discovery: find and pay for APIs at runtime. "
                         "Use x402_browse to explore the catalog (free), x402_discover "
                         "to search with quality signals ($0.005 USDC on Base), "
-                        "x402_health to check uptime, x402_register to list your API."
+                        "x402_health to check uptime, x402_register to list your API. "
+                        "Use x402_trust to check ERC-8004 on-chain trust profiles."
                     ),
                 },
             })
@@ -305,6 +334,7 @@ def create_mcp_router(
                     registry, search_fn, payment_fn, enrich_fn,
                     health_stats_fn, last_check_fn, health_status_fn,
                     migrate_fn, save_fn, query_price_units, payment_required_body_fn,
+                    trust_fn,
                 )
                 return JSONResponse({
                     "jsonrpc": "2.0",

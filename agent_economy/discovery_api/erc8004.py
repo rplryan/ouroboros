@@ -259,6 +259,11 @@ async def _lookup_onchain(wallet: str) -> dict:
 # Public API
 # ---------------------------------------------------------------------------
 
+async def _noop_task() -> dict:
+    """Async noop — returns empty dict."""
+    return {}
+
+
 async def get_trust_profile(
     wallet: Optional[str] = None,
     service_url: Optional[str] = None,
@@ -302,13 +307,13 @@ async def get_trust_profile(
     if service_url:
         tasks.append(_check_well_known(service_url))
     else:
-        tasks.append(asyncio.coroutine(lambda: {})())  # noop
+        tasks.append(_noop_task())
 
     # On-chain check (runs if we have a wallet)
     if wallet and re.match(r"^0x[0-9a-fA-F]{40}$", wallet):
         tasks.append(_lookup_onchain(wallet))
     else:
-        tasks.append(asyncio.coroutine(lambda: {})())  # noop
+        tasks.append(_noop_task())
 
     well_known_data, onchain_data = await asyncio.gather(*tasks, return_exceptions=True)
 

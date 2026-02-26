@@ -28,6 +28,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from erc8004 import get_trust_profile, get_trust_summary  # noqa: E402
 
 load_dotenv()
 
@@ -173,6 +176,15 @@ def _enrich_with_quality(entry: dict) -> dict:
     enriched["successful_checks"] = stats["successful_checks"]
     enriched["last_health_check"] = last["checked_at"] if last else None
     enriched["health_status"] = _compute_health_status(stats, last)
+    # ERC-8004 trust fields (populated asynchronously via /trust endpoint)
+    enriched["erc8004"] = {
+        "status": "pending" if not entry.get("wallet") else "available",
+        "wallet": entry.get("wallet"),
+        "identity_id": None,
+        "reputation_score": None,
+        "validation_count": None,
+        "registered": False,
+    }
     return enriched
 
 # ---------------------------------------------------------------------------
@@ -545,7 +557,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.0.0",
+    version="3.1.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.005 USDC on Base."
@@ -564,7 +576,7 @@ async def root(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.0.0",
+            "version": "3.1.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.005 USDC on Base."
@@ -766,6 +778,41 @@ async def catalog() -> JSONResponse:
     })
 
 # ---------------------------------------------------------------------------
+# GET /trust/{wallet} — ERC-8004 trust profile (free)
+# ---------------------------------------------------------------------------
+
+@app.get("/trust/{wallet}")
+async def trust_profile(wallet: str) -> JSONResponse:
+    """Return ERC-8004 trust profile for a wallet address or service URL.
+
+    ERC-8004 is an Ethereum standard providing decentralized AI agent trust
+    via Identity, Reputation, and Validation registries.
+
+    Status: PENDING — ERC-8004 contracts not yet confirmed deployed on Base mainnet.
+    The standard launched Jan 29, 2026 and is in DRAFT status.
+    This endpoint is live and ready — it will return full trust data when
+    contracts are deployed and addresses are confirmed.
+    """
+    import re
+    # Accept either a wallet address (0x...) or a service URL
+    if re.match(r"^0x[0-9a-fA-F]{40}$", wallet):
+        profile = await get_trust_profile(wallet=wallet)
+    else:
+        # Treat as URL — URL-decode if needed
+        from urllib.parse import unquote
+        profile = await get_trust_profile(service_url=unquote(wallet))
+
+    return JSONResponse(profile)
+
+
+@app.get("/trust")
+async def trust_by_url(url: str = Query(..., description="Service URL to look up")) -> JSONResponse:
+    """Return ERC-8004 trust profile for a service URL."""
+    profile = await get_trust_profile(service_url=url)
+    return JSONResponse(profile)
+
+
+# ---------------------------------------------------------------------------
 # GET /mcp — free, MCP tool manifest
 # ---------------------------------------------------------------------------
 
@@ -805,6 +852,7 @@ async def well_known_x402_json():
             "wallet": s.get("wallet_address", ""),
             "tags": s.get("tags") or [],
             "health": s.get("health_status", "unverified"),
+            "erc8004_status": "pending",
         }
         for s in _registry
     ]
@@ -850,7 +898,7 @@ async def smithery_server_card(request: Request) -> JSONResponse:
         {
             "serverInfo": {
                 "name": "x402 Service Discovery",
-                "version": "3.0.0"
+                "version": "3.1.0"
             },
             "authentication": {
                 "required": False
@@ -1167,6 +1215,7 @@ app.include_router(create_mcp_router(
     save_fn=_save_registry,
     query_price_units=QUERY_PRICE_UNITS,
     payment_required_body_fn=_payment_required_body,
+    trust_fn=get_trust_profile,
 ))
 
 # ---------------------------------------------------------------------------

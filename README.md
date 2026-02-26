@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.2.5 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.3.0 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,13 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.3.0 -- ERC-8004 Trust Layer Integration
+- **ERC-8004 trust signals**: New `erc8004.py` module queries on-chain Identity, Reputation, and Validation registries for any service with an Ethereum wallet address
+- **New `/trust/{wallet}` API endpoint**: Returns full ERC-8004 trust profile (identity, reputation score, attestation count, verification badge)
+- **New `x402_trust` MCP tool**: 5th tool enabling agents to verify service trust on-chain before paying
+- **Demo badges**: Service cards now display ERC-8004 verification badge when identity is confirmed
+- **Well-known check**: Optional off-chain verification via `/.well-known/erc8004.json`
 
 ### v6.2.5 -- MCP Streamable HTTP transport
 - **MCP Streamable HTTP transport**: proper JSON-RPC 2.0 `/smithery` endpoint for Smithery.ai listing; extracted `mcp_transport.py` module

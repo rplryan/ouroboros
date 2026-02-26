@@ -258,6 +258,22 @@
   .health-deg     { background: #ffbb0018; color: var(--yellow); border: 1px solid #ffbb0040; }
   .health-unverif { background: #ffffff0a; color: var(--dim);    border: 1px solid var(--border); }
 
+  /* ERC-8004 trust badge */
+  .trust-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 100px;
+    font-size: .68rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    white-space: nowrap;
+  }
+  .trust-registered  { background: #ffd70018; color: var(--gold);    border: 1px solid #ffd70040; }
+  .trust-draft       { background: #00e5ff10; color: var(--cyan);    border: 1px solid #00e5ff30; opacity: 0.7; }
+  .trust-none        { display: none; }
+
   .card-desc {
     font-size: .875rem;
     color: #9090aa;
@@ -720,6 +736,15 @@ result = agent.run(<span class="cs">"Find a crypto price feed and get the curren
     const latency = s.avg_latency_ms != null ? `${s.avg_latency_ms}ms` : '—';
     const queries = (s.query_count || 0).toLocaleString();
 
+    // ERC-8004 trust badge
+    const erc = s.erc8004 || {};
+    let trustBadge = '';
+    if (erc.status === 'registered') {
+      trustBadge = `<span class="trust-badge trust-registered" title="ERC-8004 identity registered on-chain">🔐 ERC-8004 ID</span>`;
+    } else if (erc.status === 'draft_standard') {
+      trustBadge = `<span class="trust-badge trust-draft" title="ERC-8004 standard in draft (Jan 2026)">◈ ERC-8004</span>`;
+    }
+
     const shortUrl = s.url ? s.url.replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0] : '';
 
     return `
@@ -744,6 +769,7 @@ result = agent.run(<span class="cs">"Find a crypto price feed and get the curren
         <span>Latency <strong>${latency}</strong></span>
         <span>Queries <strong>${queries}</strong></span>
         <span>Network <strong>${esc(s.network || 'base')}</strong></span>
+        ${trustBadge}
       </div>
     </div>`;
   }
