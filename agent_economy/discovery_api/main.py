@@ -51,7 +51,14 @@ USDC_CONTRACT: str = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 QUERY_PRICE_UNITS: str = os.getenv("QUERY_PRICE_USDC_UNITS", "5000")        # $0.005
 HEALTH_PRICE_UNITS: str = os.getenv("HEALTH_CHECK_PRICE_USDC_UNITS", "50000")  # $0.05 (reserved)
 
-FACILITATOR_URL: str = "https://x402.org/facilitator/verify"
+FACILITATOR_URL: str = os.getenv(
+    "FACILITATOR_URL", "https://api.cdp.coinbase.com/platform/v2/x402/verify"
+)
+PAYAI_FACILITATOR_URL: str = "https://facilitator.payai.network/verify"
+PAYAI_REGISTER_URL: str = "https://facilitator.payai.network/register-merchant"
+SERVICE_BASE_URL: str = os.getenv(
+    "SERVICE_BASE_URL", "https://x402-discovery-api.onrender.com"
+)
 
 REGISTRY_PATH: Path = Path(__file__).parent / "registry.json"
 DB_PATH: Path = Path(__file__).parent / "health.db"
@@ -495,6 +502,24 @@ async def _background_scraper() -> None:
 # App lifespan
 # ---------------------------------------------------------------------------
 
+async def _register_with_payai() -> None:
+    """Advertise with PayAI facilitator network.
+    
+    PayAI uses crawl-based discovery: they crawl /.well-known/x402.json on services
+    that advertise their facilitator URL. We confirm their API is up and log status.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get("https://facilitator.payai.network/list")
+            if resp.status_code == 200:
+                data = resp.json()
+                count = len(data) if isinstance(data, list) else data.get("total", "?")
+                log.info("PayAI facilitator active — %s services indexed. Our /.well-known/x402.json advertises PayAI as facilitator.", count)
+            else:
+                log.info("PayAI facilitator responded %s — crawl-based discovery active via /.well-known/x402.json", resp.status_code)
+    except Exception as exc:
+        log.warning("PayAI status check failed (non-fatal): %s", exc)
+
 @asynccontextmanager
 async def _app_lifespan(app: FastAPI):
     init_db()
@@ -503,6 +528,8 @@ async def _app_lifespan(app: FastAPI):
     scraper_task = asyncio.create_task(_background_scraper())
     log.info("Background health checker started (interval=%ds)", HEALTH_CHECK_INTERVAL_SECS)
     log.info("Background x402scan scraper started (interval=%ds)", SCRAPE_INTERVAL_SECS)
+    # Register with facilitator networks for auto-discovery
+    asyncio.create_task(_register_with_payai())
     yield
     health_task.cancel()
     scraper_task.cancel()
@@ -760,6 +787,59 @@ async def well_known_discovery(request: Request) -> JSONResponse:
         },
         headers={"Cache-Control": "public, max-age=300"},
     )
+
+
+@app.get("/.well-known/x402.json", include_in_schema=False)
+async def well_known_x402_json():
+    """CDP Bazaar auto-discovery endpoint. Crawled to list this service in Bazaar."""
+    paid_services = [
+        {
+            "url": s.get("url", ""),
+            "name": s.get("name", ""),
+            "description": s.get("description", ""),
+            "price": {
+                "amount": str(int(float(s.get("price_usd", 0)) * 1_000_000)),
+                "currency": "USDC",
+                "network": s.get("network", "base"),
+            },
+            "wallet": s.get("wallet_address", ""),
+            "tags": s.get("tags") or [],
+            "health": s.get("health_status", "unverified"),
+        }
+        for s in _registry
+    ]
+    return {
+        "version": "1",
+        "name": "x402 Service Discovery API",
+        "description": "Discover x402-payable APIs with quality signals. Enables autonomous agents to find and pay for services via USDC micropayments on Base.",
+        "url": "https://x402-discovery-api.onrender.com",
+        "wallet": "0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA",
+        "network": "base",
+        "facilitator": PAYAI_FACILITATOR_URL,
+        "discoverable": True,
+        "services": paid_services[:50],  # cap for crawlers
+        "endpoints": [
+            {
+                "path": "/discover",
+                "method": "GET",
+                "payment_required": True,
+                "price": {"amount": "5000", "currency": "USDC", "network": "base"},
+                "description": "Discover x402 services by keyword",
+            },
+            {
+                "path": "/catalog",
+                "method": "GET",
+                "payment_required": False,
+                "description": "Browse full catalog (free)",
+            },
+            {
+                "path": "/register",
+                "method": "POST",
+                "payment_required": False,
+                "description": "Register a new service (free)",
+            },
+        ],
+    }
 
 
 @app.get("/.well-known/mcp/server-card.json", include_in_schema=False)
