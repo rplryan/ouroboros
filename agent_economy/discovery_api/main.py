@@ -778,83 +778,75 @@ async def smithery_server_card(request: Request) -> JSONResponse:
             "tools": [
                 {
                     "name": "x402_discover",
-                    "description": "Discover x402-payable APIs at runtime. Search the registry of paid endpoints by keyword, category, or capability tag. Returns service URLs, pricing, health status, and quality signals. Costs $0.005 USDC per query (x402 micropayment on Base).",
+                    "description": "Discover x402-payable services matching a query. Searches the registry of x402-enabled APIs and returns matching endpoints with quality signals (uptime, latency, payment details). Each query costs $0.005 USDC via x402 protocol.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "Search keyword (e.g. 'image generation', 'data enrichment')"
-                            },
-                            "category": {
-                                "type": "string",
-                                "description": "Filter by category (e.g. 'AI', 'Data', 'Finance')"
-                            },
-                            "capability": {
-                                "type": "string",
-                                "description": "Filter by capability tag (e.g. 'text-to-image', 'web-scraping')"
-                            },
-                            "max_price_usd": {
-                                "type": "number",
-                                "description": "Maximum price per call in USD (default: 0.50)"
+                                "description": "Natural language or keyword search (e.g. 'weather', 'llm', 'research')"
                             }
                         },
-                        "required": []
+                        "required": ["query"]
                     }
                 },
                 {
-                    "name": "x402_catalog",
-                    "description": "Browse the full catalog of registered x402-payable services. Free — no payment required. Returns all services with health status, pricing, and capability tags.",
+                    "name": "x402_browse",
+                    "description": "Browse all registered x402-payable services with optional filtering by category. Returns the full catalog for free.",
                     "inputSchema": {
                         "type": "object",
-                        "properties": {},
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "description": "Optional category filter (e.g. 'data', 'compute', 'research')"
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Max results to return (default 20)"
+                            }
+                        },
                         "required": []
                     }
                 },
                 {
                     "name": "x402_health",
-                    "description": "Check the health and uptime of a specific x402 service endpoint. Free — no payment required.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "endpoint_id": {
-                                "type": "string",
-                                "description": "The service endpoint ID or URL to check"
-                            }
-                        },
-                        "required": ["endpoint_id"]
-                    }
-                },
-                {
-                    "name": "x402_register",
-                    "description": "Register a new x402-payable service endpoint in the discovery registry. Free — no payment required.",
+                    "description": "Check the health and uptime statistics of a specific x402 service by URL or service ID.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "url": {
                                 "type": "string",
-                                "description": "The HTTPS URL of the x402-payable endpoint"
+                                "description": "The endpoint URL of the service to check"
+                            }
+                        },
+                        "required": ["url"]
+                    }
+                },
+                {
+                    "name": "x402_register",
+                    "description": "Register a new x402-payable service in the discovery registry. Free to register.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The public HTTPS URL of the x402-enabled endpoint"
                             },
                             "name": {
                                 "type": "string",
-                                "description": "Human-readable service name"
+                                "description": "Human-readable name of the service"
                             },
                             "description": {
                                 "type": "string",
                                 "description": "What the service does"
                             },
-                            "category": {
-                                "type": "string",
-                                "description": "Service category (e.g. 'AI', 'Data', 'Finance')"
-                            },
                             "price_usd": {
                                 "type": "number",
                                 "description": "Price per call in USD"
                             },
-                            "capabilities": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Capability tags (e.g. ['text-to-image', 'async'])"
+                            "category": {
+                                "type": "string",
+                                "description": "Service category (data, compute, research, etc.)"
                             }
                         },
                         "required": ["url", "name", "description"]
@@ -864,6 +856,7 @@ async def smithery_server_card(request: Request) -> JSONResponse:
             "resources": [],
             "prompts": []
         },
+        media_type="application/json",
         headers={"Cache-Control": "public, max-age=3600"}
     )
 
