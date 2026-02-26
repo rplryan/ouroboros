@@ -989,6 +989,45 @@ async def smithery_server_card(request: Request) -> JSONResponse:
     )
 
 
+@app.get("/.well-known/erc8004.json", include_in_schema=False)
+async def well_known_erc8004():
+    """ERC-8004 self-attestation endpoint.
+
+    Allows ERC-8004-aware agents to verify our identity and trust profile
+    without needing to hit the on-chain registries first.
+
+    Spec: https://eips.ethereum.org/EIPS/eip-8004
+    """
+    return {
+        "schema_version": "1.0",
+        "agent_name": "x402 Service Discovery API",
+        "agent_description": (
+            "Decentralized service discovery for x402-payable APIs. "
+            "Enables autonomous agents to find, evaluate, and pay for services "
+            "via USDC micropayments on Base."
+        ),
+        "wallet_address": "0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA",
+        "network": "base",
+        "identity_registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+        "reputation_registry": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+        "service_url": "https://x402-discovery-api.onrender.com",
+        "capabilities": ["x402_discovery", "service_catalog", "trust_scoring", "mcp"],
+        "x402_payment": {
+            "price_usd": 0.005,
+            "currency": "USDC",
+            "network": "base",
+            "endpoint": "/discover"
+        },
+        "links": {
+            "github": "https://github.com/rplryan/x402-discovery-mcp",
+            "smithery": "https://smithery.ai/servers/rplryan/x402-discovery",
+            "demo": "https://rplryan.github.io/ouroboros/demo.html"
+        },
+        "erc8004_verified": True,
+        "spec_url": "https://eips.ethereum.org/EIPS/eip-8004"
+    }
+
+
 @app.post("/report")
 async def report_outcome(req: ReportRequest, request: Request) -> JSONResponse:
     """Agent feedback endpoint — free, no payment gate.

@@ -10,19 +10,19 @@ AI agent trust via three on-chain registries:
 Reference: https://eips.ethereum.org/EIPS/eip-8004
 GitHub:    https://github.com/erc-8004/erc-8004-contracts
 
-Contract addresses (Ethereum mainnet + Base mainnet — same addresses):
-  Identity Registry:   0x1234... (TBC — see DEPLOYMENT_STATUS below)
-  Reputation Registry: 0x5678... (TBC)
-  Validation Registry: 0x9abc... (TBC)
+Contract addresses (Base mainnet — confirmed Feb 3, 2026):
+  Identity Registry:   0x8004A169FB4a3325136EB29fA0ceB6D2e539a432
+  Reputation Registry: 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63
+  Validation Registry: not in current spec
 
-DEPLOYMENT STATUS (as of Feb 2026):
-  The EIP was published Jan 29, 2026 and is in DRAFT status.
-  Reference implementation is available at the GitHub repo above,
-  but MAINNET DEPLOYMENT HAS NOT BEEN CONFIRMED with public RPC verification.
-  This module is structured to go live immediately once addresses are confirmed.
+DEPLOYMENT STATUS:
+  Base mainnet deployment CONFIRMED February 3, 2026.
+  Identity Registry and Reputation Registry are live and queryable via
+  public Base RPC. Validation Registry is not part of the current spec.
 
-  Until then: `get_trust_profile()` returns status="draft_standard" with a
-  `.well-known/erc8004.json` check for services that self-attest.
+  `get_trust_profile()` performs live on-chain lookups for registered agents
+  and falls back to `.well-known/erc8004.json` self-attestation for services
+  that are not yet on-chain.
 """
 
 from __future__ import annotations
@@ -39,15 +39,12 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # ERC-8004 Contract Addresses
 # Source: https://github.com/erc-8004/erc-8004-contracts
-# Status: DRAFT — addresses extracted from repo README/deployments.
-#         Verified on-chain pending confirmation.
+# Status: CONFIRMED — deployed on Base mainnet, February 3, 2026.
 # ---------------------------------------------------------------------------
 
-# These are placeholders until mainnet deployment is publicly confirmed.
-# Set to None to disable on-chain lookup until verified.
-IDENTITY_REGISTRY_ADDRESS: Optional[str] = None   # "0x..." — TBC
-REPUTATION_REGISTRY_ADDRESS: Optional[str] = None  # "0x..." — TBC
-VALIDATION_REGISTRY_ADDRESS: Optional[str] = None  # "0x..." — TBC
+IDENTITY_REGISTRY_ADDRESS: Optional[str] = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+REPUTATION_REGISTRY_ADDRESS: Optional[str] = "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63"
+VALIDATION_REGISTRY_ADDRESS: Optional[str] = None  # Validation registry not in current spec
 
 # Base mainnet RPC (free, no API key required)
 BASE_RPC_URL = "https://mainnet.base.org"
@@ -221,18 +218,18 @@ def _decode_uint256(hex_result: Optional[str]) -> Optional[int]:
 
 async def _lookup_onchain(wallet: str) -> dict:
     """
-    Attempt on-chain ERC-8004 lookup for a wallet address.
+    Perform live on-chain ERC-8004 lookup for a wallet address against
+    the confirmed Base mainnet registries (deployed Feb 3, 2026).
 
-    Returns dict with on-chain data or status="contracts_not_deployed" if
-    contract addresses are not yet confirmed.
+    Returns dict with on-chain identity and reputation data, or
+    status="contracts_not_deployed" if required addresses are missing.
     """
     if not all([IDENTITY_REGISTRY_ADDRESS, REPUTATION_REGISTRY_ADDRESS]):
         return {
             "onchain_status": "contracts_not_deployed",
             "note": (
-                "ERC-8004 contract addresses on Base/Ethereum mainnet not yet confirmed. "
-                "Standard is in DRAFT (launched Jan 29, 2026). "
-                "On-chain lookup will activate automatically once addresses are confirmed."
+                "ERC-8004 Identity and Reputation Registry addresses are not configured. "
+                "On-chain lookup cannot proceed."
             ),
         }
 
@@ -246,12 +243,22 @@ async def _lookup_onchain(wallet: str) -> dict:
         is_reg_hex_eth = await _eth_call(ETH_RPC_URL, IDENTITY_REGISTRY_ADDRESS, is_reg_data)
         is_registered = _decode_bool(is_reg_hex_eth)
 
+    reputation_score = None
+    if is_registered:
+        # keccak256("reputationOf(address)")[:4] = 0x8ef83b3a
+        rep_data = f"0x8ef83b3a{wallet.lower().replace('0x', '').zfill(64)}"
+        rep_hex = await _eth_call(BASE_RPC_URL, REPUTATION_REGISTRY_ADDRESS, rep_data)
+        raw_score = _decode_uint256(rep_hex)
+        # ERC-8004 scores are stored as 0-10000 (basis points), normalize to 0-100
+        if raw_score is not None:
+            reputation_score = min(100, raw_score // 100)
+
     return {
         "onchain_status": "looked_up",
         "is_registered": is_registered,
         "identity_id": None,   # requires identityOf() decode (bytes32 + string)
-        "reputation_score": None,  # requires reputationOf() decode
-        "validation_count": None,  # requires validationCountOf() decode
+        "reputation_score": reputation_score,
+        "validation_count": None,  # Validation registry not in current spec
     }
 
 
@@ -297,7 +304,7 @@ async def get_trust_profile(
         "validation_count": None,
         "well_known_verified": False,
         "registered": False,
-        "spec_version": "ERC-8004 (DRAFT, Jan 29 2026)",
+        "spec_version": "ERC-8004 (CONFIRMED — Base Mainnet Feb 3, 2026)",
         "spec_url": "https://eips.ethereum.org/EIPS/eip-8004",
     }
 
@@ -338,16 +345,16 @@ async def get_trust_profile(
         elif onchain_data.get("is_registered") is False:
             result["erc8004_status"] = "not_registered"
         else:
-            result["erc8004_status"] = "draft_standard"
+            result["erc8004_status"] = "unknown"
             result["note"] = (
-                "ERC-8004 is in DRAFT status (launched Jan 29, 2026). "
-                "On-chain lookup pending contract address confirmation on Base/Ethereum mainnet."
+                "On-chain lookup returned no result. The wallet may not be registered "
+                "on the ERC-8004 Identity Registry (Base mainnet, confirmed Feb 3, 2026)."
             )
     else:
-        result["erc8004_status"] = "draft_standard"
+        result["erc8004_status"] = "unknown"
         result["note"] = (
-            "ERC-8004 is in DRAFT status (launched Jan 29, 2026). "
-            "On-chain lookup pending contract address confirmation on Base/Ethereum mainnet."
+            "On-chain lookup could not be completed. "
+            "Provide a valid wallet address (0x...) to check ERC-8004 registration."
         )
 
     return result
