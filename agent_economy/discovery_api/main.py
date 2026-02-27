@@ -622,7 +622,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.0.0",
+    version="3.1.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.005 USDC on Base."
@@ -641,7 +641,7 @@ async def root(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.0.0",
+            "version": "3.1.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.005 USDC on Base."
@@ -927,7 +927,7 @@ async def smithery_server_card(request: Request) -> JSONResponse:
         {
             "serverInfo": {
                 "name": "x402 Service Discovery",
-                "version": "3.0.0"
+                "version": "3.1.0"
             },
             "authentication": {
                 "required": False
