@@ -40,7 +40,7 @@ The actual HTTP 402 → EIP-712 sign → X-PAYMENT header → server verify flow
 - Server: `receiveWithAuthorization` on Base mainnet
 - HTTP 200 → 5 services returned + receipt
 
-Receipt confirmed: `{"success": true, "payer": "0xDBBe14...", "amount": 5000, "network": "eip155:8453"}`
+Receipt confirmed: payer 0xDBBe14..., amount 5000 USDC units, network Base mainnet (eip155:8453), server returned HTTP 200 with success=true.
 
 This is the real protocol — not a direct ERC-20 transfer. The `0xb0ef774...` TX from earlier was correctly identified as a workaround. The 17:56 payment is the actual x402 flow.
 
