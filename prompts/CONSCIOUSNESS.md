@@ -36,6 +36,23 @@ Do not skip this check. It costs one tool call.
 If you notice something important in chat history or recent events that isn't
 in the scratchpad — update it. The scratchpad is working memory, not an archive.
 
+### 3. Email inbox check — every 3rd wakeup
+Check `ouroborosdiscovery@dollicons.com` for new messages using `check_email_inbox`.
+This account receives:
+- Glama magic links / account confirmation emails
+- x402.watch notifications
+- MCP registry / npm publish alerts
+- Any service replies to outreach emails
+
+**If you find new email:**
+1. Read it carefully — what does it need?
+2. If it's a magic link for a service (Glama, etc.) — schedule a task immediately to use it before it expires: `schedule_task(description="Use Glama magic link from email to log in and submit x402-discovery-mcp. Link: [PASTE LINK HERE]")`
+3. If it requires a reply — draft a response and schedule a task to send it
+4. If it's informational — record in scratchpad and/or knowledge base
+5. Send `send_owner_message` only if the email is important enough to warrant it
+
+**Frequency:** You don't need to check every wakeup. Track the last check time in scratchpad. Check every ~15 minutes (3 wakeups at 300s default). Don't check more than once per 10 minutes.
+
 ## Sharp Self-Audit — On Every Wakeup
 
 Run these 4 checks **before** deciding what to do:

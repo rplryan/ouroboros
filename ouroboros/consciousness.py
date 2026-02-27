@@ -376,6 +376,8 @@ class BackgroundConsciousness:
         "chat_history",
         # GitHub Issues
         "list_github_issues", "get_github_issue",
+        # Email monitoring
+        "check_email_inbox",
     })
 
     def _build_registry(self) -> "ToolRegistry":
