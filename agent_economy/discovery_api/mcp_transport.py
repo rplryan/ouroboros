@@ -141,6 +141,34 @@ MCP_TOOLS = [
             "openWorldHint": True,
         },
     },
+    {
+        "name": "x402_facilitator_check",
+        "description": (
+            "Check which x402 facilitators support a given network and optionally scheme. "
+            "Returns available facilitators with health status, fees, and recommended facilitator. "
+            "Useful before attempting payment to ensure there is a live facilitator for your network."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "network": {
+                    "type": "string",
+                    "description": "Network to check (e.g. 'eip155:8453', 'base', 'polygon', 'solana'). Default: 'eip155:8453'",
+                },
+                "scheme": {
+                    "type": "string",
+                    "description": "Payment scheme to check (default: 'exact')",
+                    "default": "exact",
+                },
+                "check_health": {
+                    "type": "boolean",
+                    "description": "Whether to ping facilitator health endpoints (adds ~1s latency). Default: false",
+                    "default": False,
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 MCP_PROMPTS = [
@@ -321,6 +349,50 @@ async def _handle_mcp_tool_call(
         import asyncio
         profile = await trust_fn(wallet=wallet, service_url=url_arg)
         return {"type": "text", "text": json.dumps(profile, indent=2)}
+
+
+    elif tool_name == "x402_facilitator_check":
+        network = arguments.get("network", "eip155:8453")
+        scheme = arguments.get("scheme", "exact")
+        check_health = arguments.get("check_health", False)
+
+        from .main import (
+            _get_facilitators_for_network,
+            _check_facilitator_health,
+            KNOWN_FACILITATORS,
+        )
+
+        matching = _get_facilitators_for_network(network, scheme)
+        supported = bool(matching)
+        results = []
+        for fac in matching:
+            entry = {
+                "name": fac["name"],
+                "url": fac["url"],
+                "fee_info": fac.get("fee_info", ""),
+                "description": fac.get("description", ""),
+                "docs_url": fac.get("docs_url", ""),
+                "supported_schemes": fac.get("supported_schemes", ["exact"]),
+            }
+            if check_health:
+                entry = await _check_facilitator_health(fac)
+            results.append(entry)
+
+        output = {
+            "network": network,
+            "scheme": scheme,
+            "supported": supported,
+            "facilitator_count": len(results),
+            "facilitators": results,
+            "recommended": results[0]["url"] if results else None,
+            "message": (
+                f"Found {len(results)} facilitator(s) for {network}/{scheme}."
+                if supported
+                else f"No facilitators found for {network}/{scheme}. Consider using Base mainnet (eip155:8453)."
+            ),
+            "total_known_facilitators": len(KNOWN_FACILITATORS),
+        }
+        return {"type": "text", "text": json.dumps(output, indent=2)}
 
     else:
         return {"type": "text", "text": json.dumps({"error": f"Unknown tool: {tool_name}"}), "isError": True}

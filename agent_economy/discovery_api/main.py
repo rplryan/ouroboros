@@ -56,6 +56,155 @@ FACILITATOR_URL: str = os.getenv(
 )
 PAYAI_FACILITATOR_URL: str = "https://facilitator.payai.network/verify"
 PAYAI_REGISTER_URL: str = "https://facilitator.payai.network/register-merchant"
+
+# ---------------------------------------------------------------------------
+# Facilitator registry — known x402 facilitators
+# ---------------------------------------------------------------------------
+
+KNOWN_FACILITATORS: list[dict] = [
+    {
+        "name": "Coinbase",
+        "slug": "coinbase",
+        "url": "https://x402.org/facilitator",
+        "verify_url": "https://x402.org/facilitator/verify",
+        "settle_url": "https://x402.org/facilitator/settle",
+        "health_url": "https://x402.org/facilitator",
+        "supported_networks": ["eip155:8453", "eip155:84532", "solana:5eykt4", "solana:EtWTRA"],
+        "network_aliases": {"base": "eip155:8453", "base-sepolia": "eip155:84532"},
+        "supported_schemes": ["exact"],
+        "fee_info": "Free for first 1000 tx/month on Base, then $0.001/tx",
+        "description": "Official Coinbase CDP facilitator — Base mainnet + Sepolia, Solana",
+        "docs_url": "https://docs.cdp.coinbase.com/x402",
+    },
+    {
+        "name": "PayAI",
+        "slug": "payai",
+        "url": "https://facilitator.payai.network",
+        "verify_url": "https://facilitator.payai.network/verify",
+        "settle_url": "https://facilitator.payai.network/settle",
+        "health_url": "https://facilitator.payai.network",
+        "supported_networks": [
+            "eip155:8453",    # Base
+            "eip155:137",     # Polygon
+            "eip155:43114",   # Avalanche
+            "eip155:4689",    # IoTeX
+            "eip155:1313161554",  # Aurora (NEAR)
+            "solana:5eykt4",  # Solana mainnet
+            "eip155:1482601649",  # SKALE
+        ],
+        "network_aliases": {"base": "eip155:8453", "polygon": "eip155:137", "solana": "solana:5eykt4"},
+        "supported_schemes": ["exact"],
+        "fee_info": "Free tier available; see facilitator.payai.network for pricing",
+        "description": "Multi-chain facilitator — 15+ networks including Base, Polygon, Solana, Avalanche",
+        "docs_url": "https://payai.network/docs",
+    },
+    {
+        "name": "RelAI",
+        "slug": "relai",
+        "url": "https://facilitator.x402.fi",
+        "verify_url": "https://facilitator.x402.fi/verify",
+        "settle_url": "https://facilitator.x402.fi/settle",
+        "health_url": "https://facilitator.x402.fi",
+        "supported_networks": [
+            "eip155:8453",        # Base
+            "eip155:43114",       # Avalanche
+            "eip155:1482601649",  # SKALE
+            "solana:5eykt4",      # Solana mainnet
+        ],
+        "network_aliases": {"base": "eip155:8453", "avalanche": "eip155:43114"},
+        "supported_schemes": ["exact"],
+        "fee_info": "Contact for pricing",
+        "description": "RelAI facilitator — Base, SKALE, Avalanche, Solana",
+        "docs_url": "https://x402.fi",
+    },
+    {
+        "name": "xpay",
+        "slug": "xpay",
+        "url": "https://facilitator.xpay.sh",
+        "verify_url": "https://facilitator.xpay.sh/verify",
+        "settle_url": "https://facilitator.xpay.sh/settle",
+        "health_url": "https://facilitator.xpay.sh/health",
+        "supported_networks": [
+            "eip155:8453",    # Base mainnet
+            "eip155:84532",   # Base Sepolia
+        ],
+        "network_aliases": {"base": "eip155:8453", "base-sepolia": "eip155:84532"},
+        "supported_schemes": ["exact"],
+        "fee_info": "Contact for pricing",
+        "description": "xpay facilitator — Base Mainnet + Sepolia",
+        "docs_url": "https://xpay.sh",
+    },
+]
+
+# Precompute a set of all (network, scheme) pairs that have facilitator coverage
+# Used for O(1) lookup in _enrich_with_facilitator()
+_FACILITATOR_NETWORK_INDEX: dict[str, list[dict]] = {}  # network -> list of facilitators
+for _f in KNOWN_FACILITATORS:
+    for _net in _f["supported_networks"]:
+        _FACILITATOR_NETWORK_INDEX.setdefault(_net, []).append(_f)
+    for _alias, _net in _f.get("network_aliases", {}).items():
+        pass  # aliases already covered by supported_networks canonical forms
+
+
+def _normalize_network(network: str) -> str:
+    """Normalize network string to canonical EIP-155 or Solana chain ID format."""
+    _alias_map = {
+        "base": "eip155:8453",
+        "base-mainnet": "eip155:8453",
+        "base_mainnet": "eip155:8453",
+        "base-sepolia": "eip155:84532",
+        "polygon": "eip155:137",
+        "avalanche": "eip155:43114",
+        "solana": "solana:5eykt4",
+        "solana-mainnet": "solana:5eykt4",
+    }
+    normalized = network.lower().strip()
+    return _alias_map.get(normalized, normalized)
+
+
+def _get_facilitators_for_network(network: str, scheme: str = "exact") -> list[dict]:
+    """Return list of known facilitators that support the given network+scheme."""
+    canonical = _normalize_network(network)
+    candidates = _FACILITATOR_NETWORK_INDEX.get(canonical, [])
+    # Filter by scheme
+    return [f for f in candidates if scheme in f.get("supported_schemes", ["exact"])]
+
+
+async def _check_facilitator_health(facilitator: dict, timeout: float = 3.0) -> dict:
+    """Ping a facilitator's health URL with a 3s timeout. Returns enriched dict with health_status."""
+    result = dict(facilitator)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            t0 = time.monotonic()
+            resp = await client.get(facilitator["health_url"], follow_redirects=True)
+            latency_ms = int((time.monotonic() - t0) * 1000)
+        result["health_status"] = "up" if resp.status_code < 500 else "degraded"
+        result["health_latency_ms"] = latency_ms
+        result["health_http_status"] = resp.status_code
+    except Exception as exc:
+        result["health_status"] = "unknown"
+        result["health_latency_ms"] = None
+        result["health_http_status"] = None
+        result["health_error"] = str(exc)[:120]
+    return result
+
+
+def _enrich_with_facilitator(entry: dict) -> dict:
+    """Add facilitator_compatible and recommended_facilitator fields to a service entry."""
+    network = entry.get("network", "base")
+    canonical_net = _normalize_network(network)
+    compatible_facilitators = _get_facilitators_for_network(canonical_net)
+    enriched = dict(entry)
+    if compatible_facilitators:
+        enriched["facilitator_compatible"] = True
+        enriched["recommended_facilitator"] = compatible_facilitators[0]["url"]
+        enriched["facilitator_count"] = len(compatible_facilitators)
+    else:
+        enriched["facilitator_compatible"] = False
+        enriched["recommended_facilitator"] = None
+        enriched["facilitator_count"] = 0
+    return enriched
+
 SERVICE_BASE_URL: str = os.getenv(
     "SERVICE_BASE_URL", "https://x402-discovery-api.onrender.com"
 )
@@ -173,6 +322,8 @@ def _enrich_with_quality(entry: dict) -> dict:
     enriched["successful_checks"] = stats["successful_checks"]
     enriched["last_health_check"] = last["checked_at"] if last else None
     enriched["health_status"] = _compute_health_status(stats, last)
+    # Add facilitator compatibility (synchronous — uses precomputed index)
+    enriched = _enrich_with_facilitator(enriched)
     return enriched
 
 # ---------------------------------------------------------------------------
@@ -622,7 +773,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.1.0",
+    version="3.2.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.005 USDC on Base."
@@ -641,7 +792,7 @@ async def root(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.1.0",
+            "version": "3.2.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.005 USDC on Base."
@@ -927,7 +1078,7 @@ async def smithery_server_card(request: Request) -> JSONResponse:
         {
             "serverInfo": {
                 "name": "x402 Service Discovery",
-                "version": "3.1.0"
+                "version": "3.2.0"
             },
             "authentication": {
                 "required": False
