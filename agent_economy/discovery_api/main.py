@@ -1232,6 +1232,18 @@ async def mcp_call(request: Request) -> JSONResponse:
 
 # Mount MCP Streamable HTTP Transport (Smithery-compatible) from mcp_transport module
 from mcp_transport import create_mcp_router  # noqa: E402
+
+
+async def _trust_stub(wallet: str | None = None, service_url: str | None = None) -> dict:
+    """Stub trust function — ERC-8004 integration temporarily disabled."""
+    return {
+        "status": "pending",
+        "wallet": wallet,
+        "service_url": service_url,
+        "message": "ERC-8004 trust verification temporarily unavailable",
+    }
+
+
 app.include_router(create_mcp_router(
     registry=_registry,
     search_fn=_search,
@@ -1244,6 +1256,7 @@ app.include_router(create_mcp_router(
     save_fn=_save_registry,
     query_price_units=QUERY_PRICE_UNITS,
     payment_required_body_fn=_payment_required_body,
+    trust_fn=_trust_stub,
 ))
 
 # ---------------------------------------------------------------------------
