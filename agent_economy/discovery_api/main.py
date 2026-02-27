@@ -1070,6 +1070,39 @@ async def well_known_x402_json():
     }
 
 
+@app.get("/facilitator-check", include_in_schema=False)
+async def facilitator_check(
+    network: str = "eip155:8453",
+    scheme: str = "exact",
+) -> JSONResponse:
+    """Check which x402 payment facilitators support a given network and scheme.
+
+    Query params:
+        network: CAIP-2 network identifier (default: "eip155:8453" = Base mainnet)
+        scheme:  x402 payment scheme to filter by (default: "exact")
+
+    Returns JSON with supported flag, facilitator count, and full facilitator list.
+    Free — no x402 payment required.
+    """
+    facilitators = _get_facilitators_for_network(network, scheme)
+    return JSONResponse({
+        "network": network,
+        "scheme": scheme,
+        "supported": len(facilitators) > 0,
+        "facilitator_count": len(facilitators),
+        "facilitators": [
+            {
+                "name": f.get("name", ""),
+                "url": f.get("url", ""),
+                "networks": f.get("supported_networks", []),
+                "description": f.get("description", ""),
+            }
+            for f in facilitators
+        ],
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
 @app.get("/.well-known/mcp/server-card.json", include_in_schema=False)
 async def smithery_server_card(request: Request) -> JSONResponse:
     """Static server card for Smithery scanner — bypasses x402 payment gate.
@@ -1158,6 +1191,24 @@ async def smithery_server_card(request: Request) -> JSONResponse:
                             }
                         },
                         "required": ["url", "name", "description"]
+                    }
+                },
+                {
+                    "name": "x402_facilitator_check",
+                    "description": "Check which x402 payment facilitators support a given blockchain network. Returns available facilitators, their URLs, and supported networks.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "network": {
+                                "type": "string",
+                                "description": "CAIP-2 network identifier to check (default: 'eip155:8453' = Base mainnet)"
+                            },
+                            "scheme": {
+                                "type": "string",
+                                "description": "x402 payment scheme to filter by (default: 'exact')"
+                            }
+                        },
+                        "required": []
                     }
                 }
             ],
