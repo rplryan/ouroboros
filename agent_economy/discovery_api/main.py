@@ -378,8 +378,11 @@ def _load_registry() -> list[dict]:
 
 
 def _save_registry(entries: list[dict]) -> None:
-    with REGISTRY_PATH.open("w") as fh:
-        json.dump(entries, fh, indent=2)
+    try:
+        with REGISTRY_PATH.open("w") as fh:
+            json.dump(entries, fh, indent=2)
+    except Exception as exc:
+        log.warning("Could not save registry to disk: %s", exc)
 
 
 def _guess_capability_tags_simple(name: str, description: str) -> list[str]:
@@ -871,10 +874,13 @@ async def discover(
 
     # Increment query_count for matched entries
     matched_ids = {e["id"] for e in results}
-    for entry in _registry:
-        if entry["id"] in matched_ids:
-            entry["query_count"] = entry.get("query_count", 0) + 1
-    _save_registry(_registry)
+    try:
+        for entry in _registry:
+            if entry["id"] in matched_ids:
+                entry["query_count"] = entry.get("query_count", 0) + 1
+        _save_registry(_registry)
+    except Exception as exc:
+        log.warning("Could not update query counts: %s", exc)
 
     body = {
         "results": results,
