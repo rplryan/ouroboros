@@ -461,7 +461,7 @@ async def verify_payment(
     import base64
     import json as _json
     from eth_account import Account
-    from eth_account.messages import encode_structured_data
+    from eth_account.messages import encode_typed_data
     
     try:
         # Decode the base64 payment header
@@ -505,7 +505,7 @@ async def verify_payment(
                 'value': int(auth.get('value', 0)),
                 'validAfter': int(auth.get('validAfter', 0)),
                 'validBefore': valid_before,
-                'nonce': auth.get('nonce', '0x' + '0' * 64),
+                'nonce': bytes.fromhex(nonce_hex[2:]) if (nonce_hex := auth.get('nonce', '0x' + '0' * 64)).startswith('0x') else bytes.fromhex(nonce_hex),
             },
             'primaryType': 'TransferWithAuthorization',
             'types': {
@@ -527,7 +527,7 @@ async def verify_payment(
         }
         
         # Recover signer address from signature
-        msg = encode_structured_data(structured)
+        msg = encode_typed_data(full_message=structured)
         recovered = Account.recover_message(msg, signature=signature)
         payer_address = auth.get('from', '')
         
@@ -773,7 +773,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.2.0",
+    version="3.2.1",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.005 USDC on Base."
