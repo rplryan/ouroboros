@@ -38,6 +38,13 @@ except ImportError:
     async def scrape_x402scan() -> list[dict]:  # type: ignore[misc]
         return []
 
+# Try to import ecosystem scraper (optional dependency)
+try:
+    from ecosystem_scraper import run_ecosystem_scan
+except ImportError:
+    async def run_ecosystem_scan(existing_urls: set) -> list[dict]:  # type: ignore[misc]
+        return []
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -706,28 +713,81 @@ class ReportRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 async def _background_scraper() -> None:
-    """Scrape x402scan.com every 6 hours and upsert new endpoints."""
+    """Scrape x402scan.com and ecosystem sources every 6 hours; upsert new endpoints."""
     await asyncio.sleep(10)  # Wait for startup
     while True:
         try:
-            new_entries = await scrape_x402scan()
-            added = 0
             existing_urls = {e.get("url") for e in _registry}
-            for entry in new_entries:
+
+            # --- x402scan scraper ---
+            x402scan_entries = await scrape_x402scan()
+            added_x402scan = 0
+            for entry in x402scan_entries:
+                if entry.get("url") not in existing_urls:
+                    _registry.append(_migrate_entry(entry))
+                    existing_urls.add(entry.get("url"))
+                    added_x402scan += 1
+            if added_x402scan > 0:
+                log.info("x402scan scraper: added %d new endpoints (total: %d)", added_x402scan, len(_registry))
+
+            # --- ecosystem scraper (x402.org + awesome-x402) ---
+            new_ecosystem = await run_ecosystem_scan(existing_urls)
+            added_ecosystem = 0
+            for entry in new_ecosystem:
+                if entry.get("url") not in existing_urls:
+                    _registry.append(_migrate_entry(entry))
+                    existing_urls.add(entry.get("url"))
+                    added_ecosystem += 1
+            if added_ecosystem > 0:
+                log.info("ecosystem scraper: added %d new services (total: %d)", added_ecosystem, len(_registry))
+
+            total_added = added_x402scan + added_ecosystem
+            if total_added > 0:
+                _save_registry(_registry)
+                log.info("Background scraper cycle complete: +%d services", total_added)
+
+        except Exception as exc:
+            log.warning("Background scraper failed: %s", exc)
+        await asyncio.sleep(SCRAPE_INTERVAL_SECS)
+
+
+
+
+@app.post("/catalog/refresh", tags=["admin"])
+async def catalog_refresh(background_tasks: BackgroundTasks) -> dict:
+    """Admin endpoint: trigger an immediate ecosystem catalog scan.
+
+    Runs the x402scan + ecosystem scrapers in the background and returns
+    immediately. Check /stats for updated service count after ~60 seconds.
+    """
+    async def _do_refresh():
+        try:
+            existing_urls = {e.get("url") for e in _registry}
+            x402scan_entries = await scrape_x402scan()
+            added = 0
+            for entry in x402scan_entries:
+                if entry.get("url") not in existing_urls:
+                    _registry.append(_migrate_entry(entry))
+                    existing_urls.add(entry.get("url"))
+                    added += 1
+            new_ecosystem = await run_ecosystem_scan(existing_urls)
+            for entry in new_ecosystem:
                 if entry.get("url") not in existing_urls:
                     _registry.append(_migrate_entry(entry))
                     existing_urls.add(entry.get("url"))
                     added += 1
             if added > 0:
                 _save_registry(_registry)
-                log.info(
-                    "x402scan scraper: added %d new endpoints (total: %d)",
-                    added, len(_registry),
-                )
+            log.info("Manual catalog refresh complete: +%d services (total: %d)", added, len(_registry))
         except Exception as exc:
-            log.warning("x402scan scraper failed: %s", exc)
-        await asyncio.sleep(SCRAPE_INTERVAL_SECS)
+            log.warning("Manual catalog refresh failed: %s", exc)
 
+    background_tasks.add_task(_do_refresh)
+    return {
+        "status": "refresh_started",
+        "message": "Catalog scan running in background. Check /stats in ~60 seconds for updated count.",
+        "current_service_count": len(_registry),
+    }
 
 # ---------------------------------------------------------------------------
 # App lifespan
@@ -758,7 +818,7 @@ async def _app_lifespan(app: FastAPI):
     health_task = asyncio.create_task(_background_health_checker())
     scraper_task = asyncio.create_task(_background_scraper())
     log.info("Background health checker started (interval=%ds)", HEALTH_CHECK_INTERVAL_SECS)
-    log.info("Background x402scan scraper started (interval=%ds)", SCRAPE_INTERVAL_SECS)
+    log.info("Background scraper started (x402scan + ecosystem, interval=%ds)", SCRAPE_INTERVAL_SECS)
     # Register with facilitator networks for auto-discovery
     asyncio.create_task(_register_with_payai())
     yield
@@ -776,7 +836,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.2.1",
+    version="3.3.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.005 USDC on Base."
@@ -795,7 +855,7 @@ async def root(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.2.0",
+            "version": "3.3.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.005 USDC on Base."
@@ -1117,7 +1177,7 @@ async def smithery_server_card(request: Request) -> JSONResponse:
         {
             "serverInfo": {
                 "name": "x402 Service Discovery",
-                "version": "3.2.0"
+                "version": "3.3.0"
             },
             "authentication": {
                 "required": False
