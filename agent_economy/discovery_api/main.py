@@ -23,23 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import base64 as _b64
-import hashlib as _hashlib
-import hmac as _hmac
-import time as _time
-import uuid as _uuid
-import jwt as _jwt
-from cryptography.hazmat.primitives.serialization import load_der_private_key
-from cryptography.hazmat.backends import default_backend
-
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from erc8004 import get_trust_profile, get_trust_summary  # noqa: E402
 
 load_dotenv()
 
@@ -66,10 +54,6 @@ HEALTH_PRICE_UNITS: str = os.getenv("HEALTH_CHECK_PRICE_USDC_UNITS", "50000")  #
 FACILITATOR_URL: str = os.getenv(
     "FACILITATOR_URL", "https://api.cdp.coinbase.com/platform/v2/x402/verify"
 )
-CDP_API_KEY_ID: str = os.getenv("CDP_API_KEY_ID", "")
-CDP_API_KEY_SECRET: str = os.getenv("CDP_API_KEY_SECRET", "")
-USE_CDP_FACILITATOR: bool = bool(CDP_API_KEY_ID and CDP_API_KEY_SECRET)
-
 PAYAI_FACILITATOR_URL: str = "https://facilitator.payai.network/verify"
 PAYAI_REGISTER_URL: str = "https://facilitator.payai.network/register-merchant"
 SERVICE_BASE_URL: str = os.getenv(
@@ -81,31 +65,6 @@ DB_PATH: Path = Path(__file__).parent / "health.db"
 
 HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
 SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
-
-def _generate_cdp_jwt(method: str, path: str) -> str:
-    """Generate a JWT for the Coinbase CDP API."""
-    try:
-        secret_bytes = _b64.b64decode(CDP_API_KEY_SECRET)
-        key = load_der_private_key(secret_bytes, password=None, backend=default_backend())
-        now = int(_time.time())
-        payload = {
-            "sub": CDP_API_KEY_ID,
-            "iss": "cdp",
-            "nbf": now,
-            "exp": now + 120,
-            "uris": [f"{method} api.cdp.coinbase.com{path}"],
-        }
-        token = _jwt.encode(
-            payload,
-            key,
-            algorithm="ES256",
-            headers={"kid": CDP_API_KEY_ID, "nonce": _uuid.uuid4().hex},
-        )
-        return token
-    except Exception as exc:
-        log.warning("Failed to generate CDP JWT: %s", exc)
-        return ""
-
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -214,15 +173,6 @@ def _enrich_with_quality(entry: dict) -> dict:
     enriched["successful_checks"] = stats["successful_checks"]
     enriched["last_health_check"] = last["checked_at"] if last else None
     enriched["health_status"] = _compute_health_status(stats, last)
-    # ERC-8004 trust fields (populated asynchronously via /trust endpoint)
-    enriched["erc8004"] = {
-        "status": "pending" if not entry.get("wallet") else "available",
-        "wallet": entry.get("wallet"),
-        "identity_id": None,
-        "reputation_score": None,
-        "validation_count": None,
-        "registered": False,
-    }
     return enriched
 
 # ---------------------------------------------------------------------------
@@ -356,42 +306,108 @@ async def verify_payment(
     resource_url: str,
     amount: str,
 ) -> tuple[bool, str]:
-    payload = {
-        "x402Version": 2,
-        "scheme": "exact",
-        "network": "eip155:8453",
-        "payload": payment_header,
-        "requirements": {
-            "scheme": "exact",
-            "network": "eip155:8453",
-            "amount": amount,
-            "resource": resource_url,
-            "payTo": WALLET_ADDRESS,
-            "asset": USDC_CONTRACT,
-            "maxTimeoutSeconds": 60,
-        },
-    }
-
-    headers: dict = {"Content-Type": "application/json"}
-
-    # Add JWT auth if using CDP facilitator
-    if USE_CDP_FACILITATOR and "cdp.coinbase.com" in FACILITATOR_URL:
-        path = "/platform/v2/x402/verify"
-        jwt_token = _generate_cdp_jwt("POST", path)
-        if jwt_token:
-            headers["Authorization"] = f"Bearer {jwt_token}"
-
+    """Verify x402 payment locally using EIP-712 signature verification."""
+    import base64
+    import json as _json
+    from eth_account import Account
+    from eth_account.messages import encode_structured_data
+    
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(FACILITATOR_URL, json=payload, headers=headers)
-        data = resp.json()
-        log.info("Facilitator response: status=%d isValid=%s", resp.status_code, data.get("isValid"))
-        is_valid: bool = resp.status_code == 200 and data.get("isValid", False)
-        payment_response: str = data.get("paymentResponse", "") if is_valid else ""
-        return is_valid, payment_response
+        # Decode the base64 payment header
+        decoded = base64.b64decode(payment_header + '==')
+        data = _json.loads(decoded)
+        
+        # Extract payment info
+        scheme = data.get('scheme', '')
+        network = data.get('network', '')
+        if scheme != 'exact' or network != 'eip155:8453':
+            return False, ''
+        
+        payload = data.get('payload', {})
+        signature = payload.get('signature', '')
+        auth = payload.get('authorization', {})
+        
+        # Get accepted requirements
+        accepted = data.get('accepted', {})
+        pay_to = accepted.get('payTo', WALLET_ADDRESS)
+        asset = accepted.get('asset', USDC_CONTRACT)
+        expected_amount = int(accepted.get('amount', amount))
+        extra = accepted.get('extra', {})
+        
+        # Check timing
+        valid_before = int(auth.get('validBefore', 0))
+        if valid_before > 0 and int(time.time()) > valid_before:
+            log.warning('Payment expired')
+            return False, ''
+        
+        # Reconstruct EIP-712 typed data
+        structured = {
+            'domain': {
+                'name': extra.get('name', 'USD Coin'),
+                'version': extra.get('version', '2'),
+                'chainId': 8453,
+                'verifyingContract': asset,
+            },
+            'message': {
+                'from': auth.get('from', ''),
+                'to': auth.get('to', pay_to),
+                'value': int(auth.get('value', 0)),
+                'validAfter': int(auth.get('validAfter', 0)),
+                'validBefore': valid_before,
+                'nonce': auth.get('nonce', '0x' + '0' * 64),
+            },
+            'primaryType': 'TransferWithAuthorization',
+            'types': {
+                'EIP712Domain': [
+                    {'name': 'name', 'type': 'string'},
+                    {'name': 'version', 'type': 'string'},
+                    {'name': 'chainId', 'type': 'uint256'},
+                    {'name': 'verifyingContract', 'type': 'address'},
+                ],
+                'TransferWithAuthorization': [
+                    {'name': 'from', 'type': 'address'},
+                    {'name': 'to', 'type': 'address'},
+                    {'name': 'value', 'type': 'uint256'},
+                    {'name': 'validAfter', 'type': 'uint256'},
+                    {'name': 'validBefore', 'type': 'uint256'},
+                    {'name': 'nonce', 'type': 'bytes32'},
+                ],
+            },
+        }
+        
+        # Recover signer address from signature
+        msg = encode_structured_data(structured)
+        recovered = Account.recover_message(msg, signature=signature)
+        payer_address = auth.get('from', '')
+        
+        if recovered.lower() != payer_address.lower():
+            log.warning('Signature mismatch: recovered %s, expected %s', recovered, payer_address)
+            return False, ''
+        
+        # Verify amount matches
+        signed_amount = int(auth.get('value', 0))
+        if signed_amount < expected_amount:
+            log.warning('Underpayment: signed %d, required %d', signed_amount, expected_amount)
+            return False, ''
+        
+        # Verify destination
+        if auth.get('to', '').lower() != WALLET_ADDRESS.lower():
+            log.warning('Wrong recipient: %s', auth.get("to"))
+            return False, ''
+        
+        # All checks passed
+        log.info('Payment verified: %s paid %s USDC', payer_address, signed_amount/1e6)
+        payment_response = base64.b64encode(_json.dumps({
+            'success': True,
+            'payer': payer_address,
+            'amount': signed_amount,
+            'network': 'eip155:8453'
+        }).encode()).decode()
+        return True, payment_response
+        
     except Exception as exc:
-        log.warning("Facilitator unreachable: %s", exc)
-        return False, ""
+        log.warning("Payment verification error: %s", exc)
+        return False, ''
 
 
 def _payment_required_body(
@@ -606,7 +622,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.1.0",
+    version="3.0.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.005 USDC on Base."
@@ -625,7 +641,7 @@ async def root(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.1.0",
+            "version": "3.0.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.005 USDC on Base."
@@ -827,41 +843,6 @@ async def catalog() -> JSONResponse:
     })
 
 # ---------------------------------------------------------------------------
-# GET /trust/{wallet} — ERC-8004 trust profile (free)
-# ---------------------------------------------------------------------------
-
-@app.get("/trust/{wallet}")
-async def trust_profile(wallet: str) -> JSONResponse:
-    """Return ERC-8004 trust profile for a wallet address or service URL.
-
-    ERC-8004 is an Ethereum standard providing decentralized AI agent trust
-    via Identity, Reputation, and Validation registries.
-
-    Status: PENDING — ERC-8004 contracts not yet confirmed deployed on Base mainnet.
-    The standard launched Jan 29, 2026 and is in DRAFT status.
-    This endpoint is live and ready — it will return full trust data when
-    contracts are deployed and addresses are confirmed.
-    """
-    import re
-    # Accept either a wallet address (0x...) or a service URL
-    if re.match(r"^0x[0-9a-fA-F]{40}$", wallet):
-        profile = await get_trust_profile(wallet=wallet)
-    else:
-        # Treat as URL — URL-decode if needed
-        from urllib.parse import unquote
-        profile = await get_trust_profile(service_url=unquote(wallet))
-
-    return JSONResponse(profile)
-
-
-@app.get("/trust")
-async def trust_by_url(url: str = Query(..., description="Service URL to look up")) -> JSONResponse:
-    """Return ERC-8004 trust profile for a service URL."""
-    profile = await get_trust_profile(service_url=url)
-    return JSONResponse(profile)
-
-
-# ---------------------------------------------------------------------------
 # GET /mcp — free, MCP tool manifest
 # ---------------------------------------------------------------------------
 
@@ -901,7 +882,6 @@ async def well_known_x402_json():
             "wallet": s.get("wallet_address", ""),
             "tags": s.get("tags") or [],
             "health": s.get("health_status", "unverified"),
-            "erc8004_status": "pending",
         }
         for s in _registry
     ]
@@ -939,273 +919,103 @@ async def well_known_x402_json():
     }
 
 
-SMITHERY_SERVER_CARD = {
-    "serverInfo": {
-        "name": "x402 Service Discovery",
-        "version": "3.1.0",
-        "description": "Discover, evaluate, and connect to x402-payable APIs. Enables autonomous agents to find services, check quality signals (uptime/latency), and verify ERC-8004 on-chain trust profiles."
-    },
-    "authentication": {
-        "required": False
-    },
-    "configSchema": {
-        "type": "object",
-        "properties": {
-            "baseUrl": {
-                "type": "string",
-                "title": "Custom API Base URL",
-                "description": "Override the default API endpoint (for self-hosted instances)",
-                "default": "https://x402-discovery-api.onrender.com"
-            },
-            "maxResults": {
-                "type": "integer",
-                "title": "Max Results",
-                "description": "Maximum number of results per discovery query",
-                "default": 5,
-                "minimum": 1,
-                "maximum": 20
-            },
-            "minUptimePct": {
-                "type": "number",
-                "title": "Minimum Uptime %",
-                "description": "Only return services with uptime above this threshold (0-100)",
-                "default": 0,
-                "minimum": 0,
-                "maximum": 100
-            }
-        }
-    },
-    "tools": [
-        {
-            "name": "x402_discover",
-            "title": "Discover x402 Services",
-            "description": "Discover x402-payable services matching a query. Returns matching endpoints with quality signals (uptime, latency, payment details). Each query costs $0.005 USDC via x402 protocol.",
-            "annotations": {
-                "readOnlyHint": True,
-                "destructiveHint": False,
-                "idempotentHint": True,
-                "openWorldHint": True
-            },
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Natural language or keyword search (e.g. 'weather', 'llm', 'research')"
-                    }
-                },
-                "required": ["query"]
-            }
-        },
-        {
-            "name": "x402_browse",
-            "title": "Browse All x402 Services",
-            "description": "Browse all registered x402-payable services with optional filtering by category. Returns the full catalog for free — no payment required.",
-            "annotations": {
-                "readOnlyHint": True,
-                "destructiveHint": False,
-                "idempotentHint": True,
-                "openWorldHint": True
-            },
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "category": {
-                        "type": "string",
-                        "description": "Optional category filter: data, compute, research, agent, utility"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Max results to return (default 20)",
-                        "default": 20
-                    }
-                },
-                "required": []
-            }
-        },
-        {
-            "name": "x402_health",
-            "title": "Check Service Health",
-            "description": "Check the health and uptime statistics of a specific x402 service by URL. Free — no payment required.",
-            "annotations": {
-                "readOnlyHint": True,
-                "destructiveHint": False,
-                "idempotentHint": True,
-                "openWorldHint": True
-            },
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The endpoint URL of the service to check"
-                    }
-                },
-                "required": ["url"]
-            }
-        },
-        {
-            "name": "x402_trust",
-            "title": "Check ERC-8004 Trust Profile",
-            "description": "Get the ERC-8004 on-chain trust profile for a service or wallet. Returns identity verification, reputation score, and third-party attestations. Free — no payment required.",
-            "annotations": {
-                "readOnlyHint": True,
-                "destructiveHint": False,
-                "idempotentHint": True,
-                "openWorldHint": True
-            },
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "wallet_or_url": {
-                        "type": "string",
-                        "description": "Ethereum wallet address (0x...) or service URL to look up"
-                    }
-                },
-                "required": ["wallet_or_url"]
-            }
-        },
-        {
-            "name": "x402_register",
-            "title": "Register an x402 Service",
-            "description": "Register a new x402-payable service in the discovery catalog. Free to register — no payment required.",
-            "annotations": {
-                "readOnlyHint": False,
-                "destructiveHint": False,
-                "idempotentHint": False,
-                "openWorldHint": True
-            },
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The public HTTPS URL of the x402-enabled endpoint"
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "Human-readable name of the service"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "What the service does and what kind of data it returns"
-                    },
-                    "price_usd": {
-                        "type": "number",
-                        "description": "Price per request in USD (e.g. 0.005)"
-                    },
-                    "category": {
-                        "type": "string",
-                        "description": "Service category: data, compute, research, agent, utility"
-                    },
-                    "tags": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Capability tags (e.g. ['weather', 'forecast', 'real-time'])"
-                    },
-                    "wallet": {
-                        "type": "string",
-                        "description": "Ethereum wallet address that receives payments (optional)"
-                    },
-                    "network": {
-                        "type": "string",
-                        "description": "Network name (default: base)",
-                        "default": "base"
-                    }
-                },
-                "required": ["url", "name", "description"]
-            }
-        }
-    ],
-    "resources": [
-        {
-            "uri": "x402://catalog",
-            "name": "Service Catalog",
-            "description": "Full registry of x402-payable services with quality signals",
-            "mimeType": "application/json"
-        },
-        {
-            "uri": "x402://docs",
-            "name": "x402 Protocol Docs",
-            "description": "Documentation for the x402 HTTP payment standard",
-            "mimeType": "text/html"
-        }
-    ],
-    "prompts": [
-        {
-            "name": "find_service_for_task",
-            "description": "Find the best x402 service for a specific task",
-            "arguments": [
-                {
-                    "name": "task",
-                    "description": "Description of what you need to accomplish",
-                    "required": True
-                }
-            ]
-        },
-        {
-            "name": "discover_and_verify",
-            "description": "Discover and verify an x402 service by capability, then check health before use",
-            "arguments": [
-                {
-                    "name": "capability",
-                    "description": "The capability you need (e.g. 'web search', 'data extraction')",
-                    "required": True
-                }
-            ]
-        }
-    ]
-}
-
-
 @app.get("/.well-known/mcp/server-card.json", include_in_schema=False)
 async def smithery_server_card(request: Request) -> JSONResponse:
     """Static server card for Smithery scanner — bypasses x402 payment gate.
     See: https://smithery.ai/docs/build/publish (Static Server Card section)"""
     return JSONResponse(
-        SMITHERY_SERVER_CARD,
+        {
+            "serverInfo": {
+                "name": "x402 Service Discovery",
+                "version": "3.0.0"
+            },
+            "authentication": {
+                "required": False
+            },
+            "tools": [
+                {
+                    "name": "x402_discover",
+                    "description": "Discover x402-payable services matching a query. Searches the registry of x402-enabled APIs and returns matching endpoints with quality signals (uptime, latency, payment details). Each query costs $0.005 USDC via x402 protocol.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Natural language or keyword search (e.g. 'weather', 'llm', 'research')"
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                },
+                {
+                    "name": "x402_browse",
+                    "description": "Browse all registered x402-payable services with optional filtering by category. Returns the full catalog for free.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "description": "Optional category filter (e.g. 'data', 'compute', 'research')"
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Max results to return (default 20)"
+                            }
+                        },
+                        "required": []
+                    }
+                },
+                {
+                    "name": "x402_health",
+                    "description": "Check the health and uptime statistics of a specific x402 service by URL or service ID.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The endpoint URL of the service to check"
+                            }
+                        },
+                        "required": ["url"]
+                    }
+                },
+                {
+                    "name": "x402_register",
+                    "description": "Register a new x402-payable service in the discovery registry. Free to register.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": "The public HTTPS URL of the x402-enabled endpoint"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "Human-readable name of the service"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "What the service does"
+                            },
+                            "price_usd": {
+                                "type": "number",
+                                "description": "Price per call in USD"
+                            },
+                            "category": {
+                                "type": "string",
+                                "description": "Service category (data, compute, research, etc.)"
+                            }
+                        },
+                        "required": ["url", "name", "description"]
+                    }
+                }
+            ],
+            "resources": [],
+            "prompts": []
+        },
         media_type="application/json",
         headers={"Cache-Control": "public, max-age=3600"}
     )
-
-
-@app.get("/.well-known/erc8004.json", include_in_schema=False)
-async def well_known_erc8004():
-    """ERC-8004 self-attestation endpoint.
-
-    Allows ERC-8004-aware agents to verify our identity and trust profile
-    without needing to hit the on-chain registries first.
-
-    Spec: https://eips.ethereum.org/EIPS/eip-8004
-    """
-    return {
-        "schema_version": "1.0",
-        "agent_name": "x402 Service Discovery API",
-        "agent_description": (
-            "Decentralized service discovery for x402-payable APIs. "
-            "Enables autonomous agents to find, evaluate, and pay for services "
-            "via USDC micropayments on Base."
-        ),
-        "wallet_address": "0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA",
-        "network": "base",
-        "identity_registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
-        "reputation_registry": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
-        "service_url": "https://x402-discovery-api.onrender.com",
-        "capabilities": ["x402_discovery", "service_catalog", "trust_scoring", "mcp"],
-        "x402_payment": {
-            "price_usd": 0.005,
-            "currency": "USDC",
-            "network": "base",
-            "endpoint": "/discover"
-        },
-        "links": {
-            "github": "https://github.com/rplryan/x402-discovery-mcp",
-            "smithery": "https://smithery.ai/servers/rplryan/x402-discovery",
-            "demo": "https://rplryan.github.io/ouroboros/demo.html"
-        },
-        "erc8004_verified": True,
-        "spec_url": "https://eips.ethereum.org/EIPS/eip-8004"
-    }
 
 
 @app.post("/report")
@@ -1322,96 +1132,6 @@ async def mcp_manifest() -> JSONResponse:
     })
 
 
-
-
-@app.post("/mcp")
-async def mcp_jsonrpc(request: Request) -> JSONResponse:
-    """MCP JSON-RPC 2.0 endpoint. Handles initialize, tools/list, and tools/call."""
-    body = await request.json()
-    method = body.get("method", "")
-    req_id = body.get("id", 1)
-    params = body.get("params", {})
-
-    if method == "initialize":
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
-                "serverInfo": {
-                    "name": "x402-discovery",
-                    "version": "3.1.0",
-                },
-            },
-        })
-
-    if method == "notifications/initialized":
-        return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {}})
-
-    if method == "tools/list":
-        tools = [
-            {
-                "name": "x402_discover",
-                "description": "Find x402-payable services by capability. Requires x402 micropayment ($0.001 USDC on Base).",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string"},
-                        "capability": {"type": "string"},
-                        "max_price_usd": {"type": "number"},
-                        "x402_payment": {"type": "string"},
-                    },
-                },
-            },
-            {
-                "name": "x402_browse",
-                "description": "Browse the complete free x402 service catalog. No payment required.",
-                "inputSchema": {"type": "object", "properties": {}},
-            },
-            {
-                "name": "x402_health",
-                "description": "Check live health status of a specific x402 service. Free.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"service_id": {"type": "string"}},
-                    "required": ["service_id"],
-                },
-            },
-            {
-                "name": "x402_register",
-                "description": "Register a new x402-payable service. Free.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "url": {"type": "string"},
-                        "description": {"type": "string"},
-                        "price_usd": {"type": "number"},
-                        "category": {"type": "string"},
-                    },
-                    "required": ["name", "url", "description", "price_usd", "category"],
-                },
-            },
-            {
-                "name": "x402_trust",
-                "description": "Get ERC-8004 trust profile for a wallet address. Free.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"wallet": {"type": "string"}},
-                    "required": ["wallet"],
-                },
-            },
-        ]
-        return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}})
-
-    return JSONResponse({
-        "jsonrpc": "2.0",
-        "id": req_id,
-        "error": {"code": -32601, "message": f"Method not found: {method}"},
-    })
-
-
 @app.post("/mcp/call")
 async def mcp_call(request: Request) -> JSONResponse:
     """Handle MCP tool calls via HTTP POST.
@@ -1524,7 +1244,6 @@ app.include_router(create_mcp_router(
     save_fn=_save_registry,
     query_price_units=QUERY_PRICE_UNITS,
     payment_required_body_fn=_payment_required_body,
-    trust_fn=get_trust_profile,
 ))
 
 # ---------------------------------------------------------------------------
