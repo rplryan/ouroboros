@@ -870,7 +870,7 @@ async def discover(
 
     log.info("GET /discover — 200 (payment verified) q=%r category=%r limit=%d", q, category, limit)
 
-    results = _search(q, category, limit)
+    results = _search(q, category, None, limit)
 
     # Increment query_count for matched entries
     matched_ids = {e["id"] for e in results}
