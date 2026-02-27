@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.3.2 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.3.3 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -223,6 +223,12 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v6.3.3 -- Session-Level Budget Monitoring
+- **`supervisor/state.py`**: Added `session_start_at` (ISO timestamp recorded at session init), `session_alerts_sent` (list of fired threshold keys), `SESSION_ALERT_THRESHOLDS_USD = [10, 20, 30, 50]` constants, `session_spend(state)` helper (current session cost), `session_rate_usd_per_hour(state)` helper (burn rate), and `check_session_budget_alerts(state, notify_fn)` function that fires Telegram alerts at each threshold with spend + burn rate info
+- **`ouroboros/context.py`**: Health Invariants section now includes session spend, burn rate, and which thresholds have been crossed — visible to the LLM on every round so it can self-regulate
+- **`supervisor/workers.py`**: `check_session_budget_alerts` called after each LLM round completes; Telegram notification sent when a threshold is crossed (once per threshold per session)
+- **Closes long-standing scratchpad TODO**: Per-task tracking existed; now session-level rate awareness prevents silent overspend
+
 ### v6.3.2 -- Security Hygiene: Account Exposure Audit
 - **BIBLE.md updated**: Added "Regular account exposure audit" duty to Security Hygiene section — explicit recurring check that no personal accounts, login emails, or credentials belonging to creator or Ouroboros are visible in public repo, git history, chat logs, or Drive logs
 - **Scope clarification**: Distinguished public accounts (excluded) from their passwords/recovery emails (always protected)
@@ -248,25 +254,6 @@ Full text: [BIBLE.md](BIBLE.md)
 - **`llm.py`**: Added `MODEL_CONTEXT_WINDOWS` dict mapping models to their context window sizes (200k for Claude/GPT, 1M for Gemini), plus `_COMPLETION_RESERVE = 8_192` and `get_context_window(model)` helper with exact-match + prefix-match fallback
 - **`context.py`**: `build_llm_messages` now accepts optional `model=` param; sets `soft_cap = max(200_000, context_window - 8_192)` dynamically — Gemini models now use ~1M token context, Claude/GPT unchanged
 - **`agent.py`**: Passes `model=self.llm.default_model()` to `build_llm_messages` at context-build time
-
-### v6.2.2 -- Model Config Update
-- **Fix env**: `OUROBOROS_MODEL_LIGHT` corrected to `google/gemini-2.5-flash` (was overriding v6.2.1 code fix with expensive `gemini-2.5-pro-preview`)
-- **Fix env**: Model IDs use canonical dot form (`claude-sonnet-4.6`, not `4-6`)
-- **Fallback list**: `claude-sonnet-4.6` → `gemini-2.5-flash` → `gpt-4.1` → `llama-3.3-70b-instruct` (diverse providers, cost-graduated)
-- **Pricing table**: Added `gpt-4.1-mini`, `llama-3.3-70b-instruct`, `gemini-2.0-flash-001` to `_MODEL_PRICING_STATIC`
-
-### v6.2.1 -- Model Updates
-- **DEFAULT_LIGHT_MODEL updated**: Changed default light model from `google/gemini-3-pro-preview` to `google/gemini-2.5-flash` — 6-7x cheaper ($0.30/$2.50 vs $2/$12 per M tokens) and more appropriate for lightweight tasks (dedup, context compaction, background consciousness).
-- **Pricing table**: Added `google/gemini-2.5-flash` to `_MODEL_PRICING_STATIC` in `loop.py`.
-- Also update example config in Quick Start: change `"OUROBOROS_MODEL_LIGHT": "google/gemini-3-pro-preview"` to `"OUROBOROS_MODEL_LIGHT": "google/gemini-2.5-flash"` and the fallback list entry too.
-- In the Configuration table, update the `OUROBOROS_MODEL_LIGHT` default value from `google/gemini-3-pro-preview` to `google/gemini-2.5-flash`.
-
-### v6.1.0 -- Budget Optimization: Selective Schemas + Self-Check + Dedup
-- **Selective tool schemas** -- core tools (~29) always in context, 23 others available via `list_available_tools`/`enable_tools`. Saves ~40% schema tokens per round.
-- **Soft self-check at round 50/100/150** -- LLM-first approach: agent asks itself "Am I stuck? Should I summarize context? Try differently?" No hard stops.
-- **Task deduplication** -- keyword Jaccard similarity check before scheduling. Blocks near-duplicate tasks (threshold 0.55). Prevents the "28 duplicate tasks" scenario.
-- **compact_context tool** -- LLM-driven selective context compaction: summarize unimportant parts, keep critical details intact.
-- 131 smoke tests passing.
 
 ### v6.0.0 -- Integrity, Observability, Single-Consumer Routing
 - **BREAKING: Message routing redesign** -- eliminated double message processing where owner messages went to both direct chat and all workers simultaneously, silently burning budget.

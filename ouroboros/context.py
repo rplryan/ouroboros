@@ -189,6 +189,30 @@ def _build_health_invariants(env: Any) -> str:
     except Exception:
         pass
 
+    # 2b. Session spend monitoring
+    try:
+        from supervisor.state import session_spend, session_rate_usd_per_hour
+        state_json = read_text(env.drive_path("state/state.json"))
+        state_data = json.loads(state_json)
+        sess_spend = session_spend(state_data)
+        sess_rate = session_rate_usd_per_hour(state_data)
+        sess_start = state_data.get("session_start_at", "")
+
+        if sess_spend > 0.01:
+            rate_str = f", rate=${sess_rate:.1f}/hr" if sess_rate is not None else ""
+            if sess_spend >= 30.0:
+                checks.append(f"CRITICAL: SESSION SPEND ${sess_spend:.2f}{rate_str} — consider pausing")
+            elif sess_spend >= 20.0:
+                checks.append(f"WARNING: SESSION SPEND ${sess_spend:.2f}{rate_str} — high spend this session")
+            elif sess_spend >= 10.0:
+                checks.append(f"WARNING: SESSION SPEND ${sess_spend:.2f}{rate_str}")
+            else:
+                checks.append(f"OK: session spend ${sess_spend:.2f}{rate_str}")
+        elif sess_start:
+            checks.append("OK: session spend <$0.01")
+    except Exception:
+        pass
+
     # 3. Per-task cost anomalies
     try:
         from supervisor.state import per_task_cost_summary

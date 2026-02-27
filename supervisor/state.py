@@ -134,6 +134,8 @@ def ensure_state_defaults(st: Dict[str, Any]) -> Dict[str, Any]:
     st.setdefault("spent_tokens_completion", 0)
     st.setdefault("spent_tokens_cached", 0)
     st.setdefault("session_id", uuid.uuid4().hex)
+    st.setdefault("session_start_at", "")
+    st.setdefault("session_alerts_sent", [])
     st.setdefault("current_branch", None)
     st.setdefault("current_sha", None)
     st.setdefault("last_owner_message_at", "")
@@ -217,6 +219,8 @@ def init_state() -> Dict[str, Any]:
 
         # Capture session snapshots for drift detection
         st["session_spent_snapshot"] = float(st.get("spent_usd") or 0.0)
+        st["session_start_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        st["session_alerts_sent"] = []
 
         # Fetch OpenRouter ground truth to capture total_usd baseline
         ground_truth = check_openrouter_ground_truth()
@@ -297,6 +301,33 @@ def budget_pct(st: Dict[str, Any]) -> float:
     if total <= 0:
         return 0.0
     return (spent / total) * 100.0
+
+
+def session_spend(st: Dict[str, Any]) -> float:
+    """Return USD spent this session (current spent minus snapshot at session start)."""
+    spent = float(st.get("spent_usd") or 0.0)
+    snapshot = float(st.get("session_spent_snapshot") or 0.0)
+    return max(0.0, spent - snapshot)
+
+
+def session_rate_usd_per_hour(st: Dict[str, Any]) -> Optional[float]:
+    """Return burn rate in USD/hour based on session start time and session spend."""
+    start_iso = st.get("session_start_at", "")
+    if not start_iso:
+        return None
+    try:
+        start = datetime.datetime.fromisoformat(start_iso)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        elapsed_hours = (now - start).total_seconds() / 3600.0
+        if elapsed_hours < 0.01:  # Less than 36 seconds — too early to compute meaningful rate
+            return None
+        return session_spend(st) / elapsed_hours
+    except Exception:
+        return None
+
+
+# Session alert thresholds — fire once each per session
+SESSION_ALERT_THRESHOLDS_USD = [10.0, 20.0, 30.0, 50.0]
 
 
 def update_budget_from_usage(usage: Dict[str, Any]) -> None:
@@ -390,6 +421,53 @@ def update_budget_from_usage(usage: Dict[str, Any]) -> None:
                 _save_state_unlocked(st)
             finally:
                 release_file_lock(STATE_LOCK_PATH, lock_fd)
+
+    # Step 3: Check session spend thresholds (outside all locks, cheap)
+    lock_fd = acquire_file_lock(STATE_LOCK_PATH)
+    try:
+        st = _load_state_unlocked()
+        session_spent_now = session_spend(st)
+        alerts_sent = list(st.get("session_alerts_sent") or [])
+        new_alerts = []
+        for threshold in SESSION_ALERT_THRESHOLDS_USD:
+            threshold_key = f"session_{threshold:.0f}"
+            if session_spent_now >= threshold and threshold_key not in alerts_sent:
+                new_alerts.append((threshold_key, threshold))
+                alerts_sent.append(threshold_key)
+        if new_alerts:
+            st["session_alerts_sent"] = alerts_sent
+            _save_state_unlocked(st)
+    finally:
+        release_file_lock(STATE_LOCK_PATH, lock_fd)
+
+    # Log alert events outside lock
+    for threshold_key, threshold_val in new_alerts:
+        try:
+            rate = session_rate_usd_per_hour(st)
+            append_jsonl(
+                DRIVE_ROOT / "logs" / "events.jsonl",
+                {
+                    "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "event": "session_budget_threshold",
+                    "threshold_usd": threshold_val,
+                    "session_spent_usd": round(session_spent_now, 4),
+                    "rate_usd_per_hour": round(rate, 4) if rate is not None else None,
+                    "session_id": st.get("session_id"),
+                    "note": f"Session spend crossed ${threshold_val:.0f} threshold",
+                }
+            )
+            if rate is not None:
+                log.warning(
+                    f"SESSION BUDGET ALERT: ${threshold_val:.0f} threshold crossed — "
+                    f"session spend=${session_spent_now:.2f}, rate=${rate:.2f}/hr"
+                )
+            else:
+                log.warning(
+                    f"SESSION BUDGET ALERT: ${threshold_val:.0f} threshold crossed — "
+                    f"session spend=${session_spent_now:.2f}"
+                )
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
