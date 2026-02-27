@@ -1321,6 +1321,17 @@ async def mcp_manifest() -> JSONResponse:
                     "required": ["name", "url", "description", "price_usd", "category"],
                 },
             },
+            {
+                "name": "x402_facilitator_check",
+                "description": "Check which x402 payment facilitators support a given blockchain network and scheme. Returns available facilitators, their URLs, and fee info. Free.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "network": {"type": "string", "description": "CAIP-2 network identifier (default: 'eip155:8453' = Base mainnet)"},
+                        "scheme": {"type": "string", "description": "x402 payment scheme (default: 'exact')"},
+                    },
+                },
+            },
         ],
         "server_url": "https://x402-discovery-api.onrender.com",
         "payment_info": {
@@ -1428,6 +1439,26 @@ async def mcp_call(request: Request) -> JSONResponse:
             "result": results[:5],
             "X-PAYMENT-RESPONSE": payment_response,
         })
+
+    elif tool_name == "x402_facilitator_check":
+        network = arguments.get("network", "eip155:8453")
+        scheme = arguments.get("scheme", "exact")
+        facilitators = _get_facilitators_for_network(network, scheme)
+        return JSONResponse({"result": {
+            "network": network,
+            "scheme": scheme,
+            "supported": len(facilitators) > 0,
+            "facilitator_count": len(facilitators),
+            "facilitators": [
+                {
+                    "name": f.get("name", ""),
+                    "url": f.get("url", ""),
+                    "networks": f.get("supported_networks", []),
+                    "description": f.get("description", ""),
+                }
+                for f in facilitators
+            ],
+        }})
 
     else:
         return JSONResponse({"error": f"Unknown tool: {tool_name}"}, status_code=404)
