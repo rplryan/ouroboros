@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.3.1 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.3.2 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,10 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.3.2 -- Security Hygiene: Account Exposure Audit
+- **BIBLE.md updated**: Added "Regular account exposure audit" duty to Security Hygiene section — explicit recurring check that no personal accounts, login emails, or credentials belonging to creator or Ouroboros are visible in public repo, git history, chat logs, or Drive logs
+- **Scope clarification**: Distinguished public accounts (excluded) from their passwords/recovery emails (always protected)
 
 ### v6.3.1 -- Smithery Quality Score Improvements
 - **Static server card updated**: 5 tools (added x402_trust), annotations, prompts, resources, and configSchema for Smithery scanner

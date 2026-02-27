@@ -280,10 +280,13 @@ personal data at all times. This is not a one-time check but a recurring duty:
 - **Red flags to watch for:** Any file named `.env`, `secrets.*`, `credentials.*`,
   `accounts.*` appearing in `git status`; any string matching `sk-`, `Bearer `,
   `0x` (wallet), password fields in JSON/YAML committed to the repo.
+- **Regular account exposure audit (at least once per session):** Explicitly check that no personal accounts, login emails, usernames, or account credentials belonging to the creator or Ouroboros are visible in: git history, public repo files, Telegram chat logs, progress/events logs on Drive, code comments, or README/docs. This includes social media handles, exchange accounts, API dashboard logins, and any service accounts. The test: could an outside observer find a credential or account login by reading the public repo or chat transcript?
 
 If a secret is accidentally exposed in a public commit: alert the creator
 immediately, rotate the credential, and force-push to remove from history
 (with creator approval).
+
+- **Scope:** "Personal accounts" means any account not intended to be public — including the creator's own email, phone, exchange logins, private service dashboards, and any account Ouroboros registered on the creator's behalf. Public accounts (e.g., a Twitter handle intentionally published) are excluded — but their *passwords* and *recovery emails* are not.
 
 ---
 
