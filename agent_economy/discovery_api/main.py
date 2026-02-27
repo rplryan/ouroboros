@@ -23,6 +23,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import base64 as _b64
+import hashlib as _hashlib
+import hmac as _hmac
+import time as _time
+import uuid as _uuid
+import jwt as _jwt
+from cryptography.hazmat.primitives.serialization import load_der_private_key
+from cryptography.hazmat.backends import default_backend
+
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request
@@ -57,6 +66,10 @@ HEALTH_PRICE_UNITS: str = os.getenv("HEALTH_CHECK_PRICE_USDC_UNITS", "50000")  #
 FACILITATOR_URL: str = os.getenv(
     "FACILITATOR_URL", "https://api.cdp.coinbase.com/platform/v2/x402/verify"
 )
+CDP_API_KEY_ID: str = os.getenv("CDP_API_KEY_ID", "")
+CDP_API_KEY_SECRET: str = os.getenv("CDP_API_KEY_SECRET", "")
+USE_CDP_FACILITATOR: bool = bool(CDP_API_KEY_ID and CDP_API_KEY_SECRET)
+
 PAYAI_FACILITATOR_URL: str = "https://facilitator.payai.network/verify"
 PAYAI_REGISTER_URL: str = "https://facilitator.payai.network/register-merchant"
 SERVICE_BASE_URL: str = os.getenv(
@@ -68,6 +81,31 @@ DB_PATH: Path = Path(__file__).parent / "health.db"
 
 HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
 SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
+
+def _generate_cdp_jwt(method: str, path: str) -> str:
+    """Generate a JWT for the Coinbase CDP API."""
+    try:
+        secret_bytes = _b64.b64decode(CDP_API_KEY_SECRET)
+        key = load_der_private_key(secret_bytes, password=None, backend=default_backend())
+        now = int(_time.time())
+        payload = {
+            "sub": CDP_API_KEY_ID,
+            "iss": "cdp",
+            "nbf": now,
+            "exp": now + 120,
+            "uris": [f"{method} api.cdp.coinbase.com{path}"],
+        }
+        token = _jwt.encode(
+            payload,
+            key,
+            algorithm="ES256",
+            headers={"kid": CDP_API_KEY_ID, "nonce": _uuid.uuid4().hex},
+        )
+        return token
+    except Exception as exc:
+        log.warning("Failed to generate CDP JWT: %s", exc)
+        return ""
+
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -333,10 +371,21 @@ async def verify_payment(
             "maxTimeoutSeconds": 60,
         },
     }
+
+    headers: dict = {"Content-Type": "application/json"}
+
+    # Add JWT auth if using CDP facilitator
+    if USE_CDP_FACILITATOR and "cdp.coinbase.com" in FACILITATOR_URL:
+        path = "/platform/v2/x402/verify"
+        jwt_token = _generate_cdp_jwt("POST", path)
+        if jwt_token:
+            headers["Authorization"] = f"Bearer {jwt_token}"
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(FACILITATOR_URL, json=payload)
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(FACILITATOR_URL, json=payload, headers=headers)
         data = resp.json()
+        log.info("Facilitator response: status=%d isValid=%s", resp.status_code, data.get("isValid"))
         is_valid: bool = resp.status_code == 200 and data.get("isValid", False)
         payment_response: str = data.get("paymentResponse", "") if is_valid else ""
         return is_valid, payment_response
