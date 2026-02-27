@@ -753,42 +753,6 @@ async def _background_scraper() -> None:
 
 
 
-@app.post("/catalog/refresh", tags=["admin"])
-async def catalog_refresh(background_tasks: BackgroundTasks) -> dict:
-    """Admin endpoint: trigger an immediate ecosystem catalog scan.
-
-    Runs the x402scan + ecosystem scrapers in the background and returns
-    immediately. Check /stats for updated service count after ~60 seconds.
-    """
-    async def _do_refresh():
-        try:
-            existing_urls = {e.get("url") for e in _registry}
-            x402scan_entries = await scrape_x402scan()
-            added = 0
-            for entry in x402scan_entries:
-                if entry.get("url") not in existing_urls:
-                    _registry.append(_migrate_entry(entry))
-                    existing_urls.add(entry.get("url"))
-                    added += 1
-            new_ecosystem = await run_ecosystem_scan(existing_urls)
-            for entry in new_ecosystem:
-                if entry.get("url") not in existing_urls:
-                    _registry.append(_migrate_entry(entry))
-                    existing_urls.add(entry.get("url"))
-                    added += 1
-            if added > 0:
-                _save_registry(_registry)
-            log.info("Manual catalog refresh complete: +%d services (total: %d)", added, len(_registry))
-        except Exception as exc:
-            log.warning("Manual catalog refresh failed: %s", exc)
-
-    background_tasks.add_task(_do_refresh)
-    return {
-        "status": "refresh_started",
-        "message": "Catalog scan running in background. Check /stats in ~60 seconds for updated count.",
-        "current_service_count": len(_registry),
-    }
-
 # ---------------------------------------------------------------------------
 # App lifespan
 # ---------------------------------------------------------------------------
@@ -849,6 +813,42 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # GET / — free
 # ---------------------------------------------------------------------------
+
+@app.post("/catalog/refresh", tags=["admin"])
+async def catalog_refresh(background_tasks: BackgroundTasks) -> dict:
+    """Admin endpoint: trigger an immediate ecosystem catalog scan.
+
+    Runs the x402scan + ecosystem scrapers in the background and returns
+    immediately. Check /stats for updated service count after ~60 seconds.
+    """
+    async def _do_refresh():
+        try:
+            existing_urls = {e.get("url") for e in _registry}
+            x402scan_entries = await scrape_x402scan()
+            added = 0
+            for entry in x402scan_entries:
+                if entry.get("url") not in existing_urls:
+                    _registry.append(_migrate_entry(entry))
+                    existing_urls.add(entry.get("url"))
+                    added += 1
+            new_ecosystem = await run_ecosystem_scan(existing_urls)
+            for entry in new_ecosystem:
+                if entry.get("url") not in existing_urls:
+                    _registry.append(_migrate_entry(entry))
+                    existing_urls.add(entry.get("url"))
+                    added += 1
+            if added > 0:
+                _save_registry(_registry)
+            log.info("Manual catalog refresh complete: +%d services (total: %d)", added, len(_registry))
+        except Exception as exc:
+            log.warning("Manual catalog refresh failed: %s", exc)
+
+    background_tasks.add_task(_do_refresh)
+    return {
+        "status": "refresh_started",
+        "message": "Catalog scan running in background. Check /stats in ~60 seconds for updated count.",
+        "current_service_count": len(_registry),
+    }
 
 @app.get("/", include_in_schema=False)
 async def root(request: Request) -> JSONResponse:
