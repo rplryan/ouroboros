@@ -354,32 +354,44 @@ async def _handle_mcp_tool_call(
     elif tool_name == "x402_facilitator_check":
         network = arguments.get("network", "eip155:8453")
         scheme = arguments.get("scheme", "exact")
-        check_health = arguments.get("check_health", False)
 
-        from .main import (
-            _get_facilitators_for_network,
-            _check_facilitator_health,
-            KNOWN_FACILITATORS,
-        )
-
-        matching = _get_facilitators_for_network(network, scheme)
+        # Inline facilitator registry to avoid circular import with main.py
+        _FACILITATORS = [
+            {"name": "Coinbase", "url": "https://x402.org/facilitator",
+             "networks": ["eip155:8453", "eip155:84532", "solana:5eykt4"],
+             "fee_info": "Free for first 1000 tx/month, then $0.001/tx",
+             "description": "Official Coinbase CDP facilitator",
+             "docs_url": "https://docs.cdp.coinbase.com/x402"},
+            {"name": "PayAI", "url": "https://facilitator.payai.network",
+             "networks": ["eip155:8453", "eip155:137", "eip155:43114", "solana:5eykt4"],
+             "fee_info": "Free tier available",
+             "description": "Multi-chain facilitator — 15+ networks",
+             "docs_url": "https://payai.network/docs"},
+            {"name": "RelAI", "url": "https://facilitator.x402.fi",
+             "networks": ["eip155:8453", "eip155:43114", "eip155:1482601649"],
+             "fee_info": "Contact for pricing",
+             "description": "RelAI facilitator — Base, SKALE, Avalanche",
+             "docs_url": "https://x402.fi"},
+            {"name": "xpay", "url": "https://facilitator.xpay.sh",
+             "networks": ["eip155:8453", "eip155:84532"],
+             "fee_info": "Contact for pricing",
+             "description": "xpay facilitator — Base Mainnet + Sepolia",
+             "docs_url": "https://xpay.sh"},
+        ]
+        _alias_map = {"base": "eip155:8453", "base-mainnet": "eip155:8453",
+                      "base-sepolia": "eip155:84532", "polygon": "eip155:137",
+                      "avalanche": "eip155:43114", "solana": "solana:5eykt4"}
+        canonical = _alias_map.get(network.lower().strip(), network.lower().strip())
+        matching = [f for f in _FACILITATORS if canonical in f["networks"]]
         supported = bool(matching)
-        results = []
-        for fac in matching:
-            entry = {
-                "name": fac["name"],
-                "url": fac["url"],
-                "fee_info": fac.get("fee_info", ""),
-                "description": fac.get("description", ""),
-                "docs_url": fac.get("docs_url", ""),
-                "supported_schemes": fac.get("supported_schemes", ["exact"]),
-            }
-            if check_health:
-                entry = await _check_facilitator_health(fac)
-            results.append(entry)
-
+        results = [
+            {"name": f["name"], "url": f["url"], "fee_info": f["fee_info"],
+             "description": f["description"], "docs_url": f["docs_url"]}
+            for f in matching
+        ]
         output = {
             "network": network,
+            "canonical_network": canonical,
             "scheme": scheme,
             "supported": supported,
             "facilitator_count": len(results),
@@ -390,7 +402,7 @@ async def _handle_mcp_tool_call(
                 if supported
                 else f"No facilitators found for {network}/{scheme}. Consider using Base mainnet (eip155:8453)."
             ),
-            "total_known_facilitators": len(KNOWN_FACILITATORS),
+            "total_known_facilitators": len(_FACILITATORS),
         }
         return {"type": "text", "text": json.dumps(output, indent=2)}
 
