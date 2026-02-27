@@ -1273,6 +1273,96 @@ async def mcp_manifest() -> JSONResponse:
     })
 
 
+
+
+@app.post("/mcp")
+async def mcp_jsonrpc(request: Request) -> JSONResponse:
+    """MCP JSON-RPC 2.0 endpoint. Handles initialize, tools/list, and tools/call."""
+    body = await request.json()
+    method = body.get("method", "")
+    req_id = body.get("id", 1)
+    params = body.get("params", {})
+
+    if method == "initialize":
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {
+                    "name": "x402-discovery",
+                    "version": "3.1.0",
+                },
+            },
+        })
+
+    if method == "notifications/initialized":
+        return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {}})
+
+    if method == "tools/list":
+        tools = [
+            {
+                "name": "x402_discover",
+                "description": "Find x402-payable services by capability. Requires x402 micropayment ($0.001 USDC on Base).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "capability": {"type": "string"},
+                        "max_price_usd": {"type": "number"},
+                        "x402_payment": {"type": "string"},
+                    },
+                },
+            },
+            {
+                "name": "x402_browse",
+                "description": "Browse the complete free x402 service catalog. No payment required.",
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "x402_health",
+                "description": "Check live health status of a specific x402 service. Free.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"service_id": {"type": "string"}},
+                    "required": ["service_id"],
+                },
+            },
+            {
+                "name": "x402_register",
+                "description": "Register a new x402-payable service. Free.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "url": {"type": "string"},
+                        "description": {"type": "string"},
+                        "price_usd": {"type": "number"},
+                        "category": {"type": "string"},
+                    },
+                    "required": ["name", "url", "description", "price_usd", "category"],
+                },
+            },
+            {
+                "name": "x402_trust",
+                "description": "Get ERC-8004 trust profile for a wallet address. Free.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"wallet": {"type": "string"}},
+                    "required": ["wallet"],
+                },
+            },
+        ]
+        return JSONResponse({"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}})
+
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "error": {"code": -32601, "message": f"Method not found: {method}"},
+    })
+
+
 @app.post("/mcp/call")
 async def mcp_call(request: Request) -> JSONResponse:
     """Handle MCP tool calls via HTTP POST.
