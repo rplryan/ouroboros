@@ -54,6 +54,78 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Generic ERC-8004 trust provider registry
+# ---------------------------------------------------------------------------
+# Any ERC-8004-compliant trust provider can be listed here.
+# To be listed, a provider must publish:
+#   - A JWKS endpoint (for offline signature verification)
+#   - A /v1/trust endpoint that accepts providerAddress and returns a signed trust profile
+# InsumerAPI is one provider; others will be added as the ecosystem matures.
+
+KNOWN_TRUST_PROVIDERS: list[dict] = [
+    {
+        "slug": "insumerapi",
+        "name": "InsumerAPI",
+        "trust_url": "https://insumermodel.com/v1/trust",
+        "jwks_url": "https://insumermodel.com/.well-known/jwks.json",
+        "description": "On-chain wallet trust scoring — stablecoin holdings, staking, DJD Agent Score",
+        "erc8004_registered": True,
+    },
+    # Add more ERC-8004 trust providers here as they become available.
+    # Schema: slug (str), name (str), trust_url (str), jwks_url (str),
+    #         description (str), erc8004_registered (bool)
+]
+
+
+async def fetch_chain_verifications(
+    provider_address: str | None,
+    timeout: float = 3.0,
+) -> list[dict]:
+    """
+    Query all known ERC-8004 trust providers for a given on-chain provider address.
+
+    Each result includes:
+      - provider: slug identifying the trust provider
+      - jwks: URL for offline verification of the provider's signature
+      - raw: the raw response from the provider (may contain trustId, compositeScore, etc.)
+      - error: set if the provider was unreachable or returned an error
+
+    The caller (e.g. build_attestation) embeds this list as `chainVerifications`.
+    Clients can independently verify each entry's signature against the provider's JWKS.
+    """
+    if not provider_address:
+        return []
+
+    results: list[dict] = []
+    import httpx as _httpx
+
+    async with _httpx.AsyncClient(timeout=timeout) as client:
+        for provider in KNOWN_TRUST_PROVIDERS:
+            entry: dict = {
+                "provider": provider["slug"],
+                "jwks": provider["jwks_url"],
+                "queried_address": provider_address,
+            }
+            try:
+                resp = await client.post(
+                    provider["trust_url"],
+                    json={"providerAddress": provider_address},
+                    headers={"Content-Type": "application/json"},
+                )
+                if resp.status_code == 200:
+                    entry["raw"] = resp.json()
+                elif resp.status_code == 404:
+                    entry["error"] = "address_not_registered"
+                else:
+                    entry["error"] = f"http_{resp.status_code}"
+            except Exception as exc:
+                entry["error"] = f"unreachable: {str(exc)[:80]}"
+            results.append(entry)
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
@@ -173,14 +245,16 @@ def build_attestation(
     service_entry: dict,
     health_stats: dict,
     last_health_check: Optional[dict],
+    chain_verifications: Optional[list] = None,
 ) -> Optional[str]:
     """
     Build and sign a discovery attestation JWT for a single service.
 
     Args:
-        service_entry: Registry entry dict (id/service_id, name, url, category, price_usd, …)
-        health_stats:  Dict with uptime_pct, avg_latency_ms, total_checks, successful_checks
-        last_health_check: Dict with checked_at, is_up, latency_ms — or None
+        service_entry:       Registry entry dict (id/service_id, name, url, category, price_usd, …)
+        health_stats:        Dict with uptime_pct, avg_latency_ms, total_checks, successful_checks
+        last_health_check:   Dict with checked_at, is_up, latency_ms — or None
+        chain_verifications: List of ERC-8004 trust provider results (from fetch_chain_verifications)
 
     Returns:
         Compact JWT string, or None if keys not configured / signing fails.
@@ -225,6 +299,12 @@ def build_attestation(
             "count": service_entry.get("facilitator_count", 0),
             "recommended": service_entry.get("recommended_facilitator"),
         },
+
+        # Generic chain verifications from ERC-8004 trust providers.
+        # Each entry includes: provider (slug), jwks (verification URL), and
+        # raw provider response (independently verifiable against provider's JWKS).
+        # Empty list = no provider address available or all providers unreachable.
+        "chainVerifications": chain_verifications or [],
 
         # Provenance
         "indexed_at": service_entry.get("listed_at", datetime.now(timezone.utc).isoformat()),

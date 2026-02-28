@@ -47,11 +47,13 @@ except ImportError:
 
 # Try to import attestation module (optional dependency)
 try:
-    from attestation import get_jwks, build_attestation, is_configured as attest_configured
+    from attestation import get_jwks, build_attestation, is_configured as attest_configured, fetch_chain_verifications, KNOWN_TRUST_PROVIDERS
 except ImportError:
     def get_jwks() -> dict: return {"keys": []}  # type: ignore[misc]
     def build_attestation(*args, **kwargs): return None  # type: ignore[misc]
     def attest_configured() -> bool: return False  # type: ignore[misc]
+    async def fetch_chain_verifications(*args, **kwargs): return []  # type: ignore[misc]
+    KNOWN_TRUST_PROVIDERS: list = []  # type: ignore[misc]
 
 # ---------------------------------------------------------------------------
 # Config
@@ -1179,6 +1181,23 @@ async def facilitator_check(
     })
 
 
+@app.get("/v1/trust-providers")
+async def list_trust_providers():
+    """
+    List known ERC-8004-registered trust providers.
+
+    These are the providers queried when building a chainVerifications block
+    in a discovery attestation. Any ERC-8004-compliant provider can be listed here.
+    Each provider publishes a JWKS endpoint for offline signature verification.
+    """
+    return {
+        "providers": KNOWN_TRUST_PROVIDERS,
+        "count": len(KNOWN_TRUST_PROVIDERS),
+        "spec": "https://github.com/coinbase/x402/issues/1375",
+        "note": "To add a provider, open an issue or PR at https://github.com/rplryan/x402-discovery-mcp"
+    }
+
+
 @app.get("/.well-known/mcp/server-card.json", include_in_schema=False)
 async def smithery_server_card(request: Request) -> JSONResponse:
     """Static server card for Smithery scanner — bypasses x402 payment gate.
@@ -1417,8 +1436,12 @@ async def attest_service(service_id: str, request: Request) -> JSONResponse:
             status_code=503,
         )
 
+    # Fetch chain verifications from ERC-8004 trust providers (generic, not vendor-specific)
+    provider_address = enriched_entry.get("provider_address") or enriched_entry.get("wallet_address")
+    chain_verifications = await fetch_chain_verifications(provider_address)
+
     # Build and sign the attestation JWT
-    token = build_attestation(enriched_entry, health_stats, last_check)
+    token = build_attestation(enriched_entry, health_stats, last_check, chain_verifications=chain_verifications)
     if token is None:
         return JSONResponse(
             {"error": "attestation_failed", "service_id": service_id},
