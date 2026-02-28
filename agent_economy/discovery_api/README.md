@@ -9,6 +9,12 @@ Find any x402-payable API at runtime. Quality-ranked. Agent-native. Permanently 
 🔌 **MCP:** `GET /mcp` for Claude/Cursor tool manifest  
 📡 **Well-Known:** `GET /.well-known/x402-discovery` — full index, no auth, free forever
 
+[![Glama](https://img.shields.io/badge/Glama-Live-brightgreen)](https://glama.ai/mcp/servers/@rplryan/x402-discovery-mcp)
+
+<a href="https://glama.ai/mcp/servers/@rplryan/x402-discovery-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@rplryan/x402-discovery-mcp/badge" />
+</a>
+
 ---
 
 ## Why this exists
