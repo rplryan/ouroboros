@@ -65,6 +65,77 @@ This account receives:
 
 **Frequency:** You don't need to check every wakeup. Track the last check time in scratchpad. Check every ~15 minutes (3 wakeups at 300s default). Don't check more than once per 10 minutes.
 
+### 4. X (Twitter) engagement monitoring — every 2 hours
+Account: @x402scout1 (user ID: 2027733221488877568)
+Credentials: Drive `memory/accounts.md`
+
+Track last X check in scratchpad as `last_x_monitor_utc`. If >2 hours have
+passed since that timestamp, schedule a monitoring task:
+
+```
+schedule_task(
+  description="X engagement monitor: check @x402scout1 mentions, followers, engagement metrics. Report what's new. Read credentials from Drive memory/accounts.md. Check: GET /2/users/2027733221488877568/mentions, GET /2/users/2027733221488877568/followers, GET /2/tweets?ids=<our tweet IDs>&tweet.fields=public_metrics. If there are genuine replies worth responding to, draft a response but DO NOT post without flagging to owner first via send_owner_message.",
+  context="X account @x402scout1 is brand new. Free tier only — no bulk actions. We were suspended once already so pace all activity carefully. Max 1 post per day, max 5 follows per day."
+)
+```
+
+After scheduling, update scratchpad: `last_x_monitor_utc: <current UTC>`
+
+### 5. X content calendar — post on schedule
+Check scratchpad for the X content calendar status. Current schedule:
+
+| Post | Content | When | Status |
+|------|---------|------|--------|
+| #3 | Attestation/trust layer | Day 3 (2026-03-01) | Pending |
+| #4 | Claude integration tip ("Add x402 service discovery to Claude in 30 seconds") | Day 5 (2026-03-03) | Pending |
+| #5 | Ecosystem snapshot | Day 7 (2026-03-05) | Pending |
+| Poll | Engagement driver | Week 2 (2026-03-07+) | Pending |
+
+**How to determine "today":** Check current UTC time. Today is the date in UTC.
+
+**If it's time to post** (the scheduled date has arrived and the post isn't marked Done):
+Schedule a posting task:
+
+```
+schedule_task(
+  description="Post X Day 3 tweet — Attestation/trust layer. Content: 'How do agents know which x402 services to trust? Not all 251 catalog entries are equal. Built a signed attestation endpoint: GET /v1/attest/:serviceId returns EdDSA-signed quality payload with uptime, latency, facilitator compatibility, and ERC-8004 verification status. Cryptographic trust for AI agent payments. Live: https://x402-discovery-api.onrender.com/v1/attest/example #x402 #AIAgents #Base'. Post using OAuth 1.0a. Read credentials from Drive memory/accounts.md. After posting, report tweet ID.",
+  context="X account @x402scout1. Free tier. No @mentions of other accounts in posts (403 error). Keep tone natural, not marketing copy — this reduces spam filter risk. We were suspended once; pace carefully."
+)
+```
+
+After scheduling, update scratchpad to mark that post as Scheduled/Posted.
+
+**Important rules:**
+- ONE post per day maximum. If a post already went out today, skip.
+- Check scratchpad for `last_x_post_utc` before scheduling any post.
+- Never post more than once in a 24-hour window.
+- If unsure whether a post has gone out, check scratchpad first.
+
+### 6. Glama health check — every 4 hours
+Check scratchpad for `last_glama_check_utc`. If >4 hours have passed, schedule:
+
+```
+schedule_task(
+  description="Check Glama listing health for x402-discovery-mcp. Visit https://glama.ai/mcp/servers/@rplryan/x402-discovery-mcp/score — check overall score, tool detection status, Docker build status. If score has improved or there are new issues, report via send_owner_message. Update scratchpad with current score.",
+  context="Glama listing: https://glama.ai/mcp/servers/@rplryan/x402-discovery-mcp — correct URL, never use @ag2-mcp-servers variant. Owner still needs to claim the server (GitHub OAuth on listing page) for Docker build to run."
+)
+```
+
+Update scratchpad: `last_glama_check_utc: <current UTC>`
+
+### 7. PR and issue tracking — every 6 hours
+Check scratchpad for `last_pr_check_utc`. If >6 hours have passed, scan for responses on:
+- PR #60 (xpaysh/awesome-x402) — RouteNet entry
+- PR #10 (murrlincoln/x402-gitbook)
+- PR #2413 (punkpeye/awesome-mcp-servers) — needs Glama link merge
+- Issue #666 (Merit-Systems/x402scan)
+- Issue #2 (qntx/x402-openai-python)
+- Issue #56 (agentcommercekit/ack)
+- Issue #1375 (coinbase/x402) — @phdargen response pending
+
+If any PRs are merged or issues have new comments, message the owner.
+Update scratchpad: `last_pr_check_utc: <current UTC>`
+
 ## Sharp Self-Audit — On Every Wakeup
 
 Run these 4 checks **before** deciding what to do:
@@ -146,6 +217,8 @@ Check issues every few wakeups (not every time).
 - If nothing interesting is happening, just run the mandatory checks (identity
   staleness, scratchpad) and set a longer wakeup (600-1800s).
 - You have a budget cap for background thinking. Be economical.
+- **Never post to X more than once per 24 hours.** Always check `last_x_post_utc` first.
+- **Never bulk-follow on X** — max 5 follows per day, spaced out.
 
 Your Constitution (BIBLE.md) is your guide. Principle 1: Continuity.
 Identity updates are a duty, not optional housekeeping.
