@@ -1205,8 +1205,12 @@ async def smithery_server_card(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "serverInfo": {
-                "name": "x402 Service Discovery",
-                "version": "3.3.0"
+                "name": "x402-discovery-mcp",
+                "displayName": "x402 Service Discovery",
+                "version": "3.3.0",
+                "description": "The index for the x402 agent economy. Discover, route, and verify 251+ live x402-payable services across Base mainnet. Quality signals, health monitoring, trust attestations, and payment facilitator compatibility — everything an AI agent needs to pay its way through the web.",
+                "homepage": "https://github.com/rplryan/x402-discovery-mcp",
+                "icon": "https://raw.githubusercontent.com/rplryan/x402-discovery-mcp/main/icon.png"
             },
             "authentication": {
                 "required": False
@@ -1214,101 +1218,180 @@ async def smithery_server_card(request: Request) -> JSONResponse:
             "tools": [
                 {
                     "name": "x402_discover",
-                    "description": "Discover x402-payable services matching a query. Searches the registry of x402-enabled APIs and returns matching endpoints with quality signals (uptime, latency, payment details). Each query costs $0.005 USDC via x402 protocol.",
+                    "description": "Discover x402-payable services matching a query. Searches the registry of 251+ x402-enabled APIs and returns matching endpoints with quality signals (uptime %, avg latency, health status, trust score). Use this when an agent needs to find a service to pay for a capability.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "Natural language or keyword search (e.g. 'weather', 'llm', 'research')"
+                                "description": "Natural language or keyword search query. Examples: 'weather forecast', 'LLM inference', 'image generation', 'financial data', 'web scraping'"
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum number of results to return (default: 10, max: 50)",
+                                "default": 10
                             }
                         },
                         "required": ["query"]
+                    },
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": False
                     }
                 },
                 {
                     "name": "x402_browse",
-                    "description": "Browse all registered x402-payable services with optional filtering by category. Returns the full catalog for free.",
+                    "description": "Browse all registered x402-payable services with optional category filtering. Returns the full catalog for free — no x402 payment required. Good for exploring what's available or building a service list.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "category": {
                                 "type": "string",
-                                "description": "Optional category filter (e.g. 'data', 'compute', 'research')"
+                                "description": "Optional category filter. Valid values: 'data', 'compute', 'research', 'agent', 'utility', 'llm', 'image', 'finance'"
                             },
                             "limit": {
                                 "type": "integer",
-                                "description": "Max results to return (default 20)"
+                                "description": "Max results to return (default: 20, max: 100)",
+                                "default": 20
                             }
                         },
                         "required": []
+                    },
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": False
                     }
                 },
                 {
                     "name": "x402_health",
-                    "description": "Check the health and uptime statistics of a specific x402 service by URL or service ID.",
+                    "description": "Check the live health and uptime statistics of a specific x402 service. Returns current status (up/down/degraded), uptime percentage, average response latency, last check timestamp, and payment facilitator compatibility.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "url": {
                                 "type": "string",
-                                "description": "The endpoint URL of the service to check"
+                                "description": "The HTTPS endpoint URL of the x402 service to check. Must be a registered service URL."
                             }
                         },
                         "required": ["url"]
+                    },
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": False
                     }
                 },
                 {
                     "name": "x402_register",
-                    "description": "Register a new x402-payable service in the discovery registry. Free to register.",
+                    "description": "Register a new x402-payable service in the discovery catalog. Free to register — no x402 payment required. The service will be monitored for health and uptime automatically after registration.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "url": {
                                 "type": "string",
-                                "description": "The public HTTPS URL of the x402-enabled endpoint"
+                                "description": "The public HTTPS URL of the x402-enabled endpoint (must return HTTP 402 on unauthenticated requests)"
                             },
                             "name": {
                                 "type": "string",
-                                "description": "Human-readable name of the service"
+                                "description": "Human-readable name of the service (e.g. 'Weather API', 'GPT-4 Proxy')"
                             },
                             "description": {
                                 "type": "string",
-                                "description": "What the service does"
+                                "description": "What the service does and what agents can use it for"
                             },
                             "price_usd": {
                                 "type": "number",
-                                "description": "Price per call in USD"
+                                "description": "Price per API call in USD (e.g. 0.001, 0.01, 0.10)"
                             },
                             "category": {
                                 "type": "string",
-                                "description": "Service category (data, compute, research, etc.)"
+                                "description": "Service category: 'data', 'compute', 'research', 'agent', 'utility', 'llm', 'image', 'finance'"
                             }
                         },
                         "required": ["url", "name", "description"]
+                    },
+                    "annotations": {
+                        "readOnlyHint": False,
+                        "destructiveHint": False,
+                        "idempotentHint": False,
+                        "openWorldHint": True
                     }
                 },
                 {
                     "name": "x402_facilitator_check",
-                    "description": "Check which x402 payment facilitators support a given blockchain network. Returns available facilitators, their URLs, and supported networks.",
+                    "description": "Check which x402 payment facilitators support a given blockchain network. Returns available facilitators with their URLs, supported networks, and fee structures. Use before initiating a payment to find a compatible facilitator.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "network": {
                                 "type": "string",
-                                "description": "CAIP-2 network identifier to check (default: 'eip155:8453' = Base mainnet)"
+                                "description": "CAIP-2 network identifier (default: 'eip155:8453' = Base mainnet). Other options: 'eip155:1' (Ethereum), 'eip155:137' (Polygon)",
+                                "default": "eip155:8453"
                             },
                             "scheme": {
                                 "type": "string",
-                                "description": "x402 payment scheme to filter by (default: 'exact')"
+                                "description": "x402 payment scheme to filter by (default: 'exact')",
+                                "default": "exact"
                             }
                         },
                         "required": []
+                    },
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": False
                     }
                 }
             ],
-            "resources": [],
-            "prompts": []
+            "resources": [
+                {
+                    "uri": "x402://catalog",
+                    "name": "x402 Service Catalog",
+                    "description": "The full index of 251+ live x402-payable services. Updated every 6 hours by an auto-scanner. Each entry includes service URL, category, price, uptime %, average latency, health status, and supported payment facilitators.",
+                    "mimeType": "application/json"
+                },
+                {
+                    "uri": "x402://facilitators",
+                    "name": "x402 Facilitator Registry",
+                    "description": "List of known x402 payment facilitators with their supported networks and endpoint URLs.",
+                    "mimeType": "application/json"
+                }
+            ],
+            "prompts": [
+                {
+                    "name": "find_service_for_task",
+                    "description": "Find the best x402-payable service for a specific agent task. Discovers services, checks health, and recommends the optimal endpoint.",
+                    "arguments": [
+                        {
+                            "name": "task_description",
+                            "description": "What the agent needs to accomplish (e.g. 'get current weather for New York', 'generate an image of a cat', 'summarize this document')",
+                            "required": True
+                        },
+                        {
+                            "name": "max_price_usd",
+                            "description": "Maximum price per call the agent is willing to pay in USD (optional)",
+                            "required": False
+                        }
+                    ]
+                },
+                {
+                    "name": "audit_service_quality",
+                    "description": "Perform a quality audit on an x402 service before using it. Checks health, uptime history, trust attestation, and facilitator compatibility.",
+                    "arguments": [
+                        {
+                            "name": "service_url",
+                            "description": "The HTTPS URL of the x402 service to audit",
+                            "required": True
+                        }
+                    ]
+                }
+            ]
         },
         media_type="application/json",
         headers={"Cache-Control": "public, max-age=3600"}
