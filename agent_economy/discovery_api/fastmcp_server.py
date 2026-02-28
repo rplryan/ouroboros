@@ -223,6 +223,89 @@ def build_mcp_app(search_fn, trust_fn=None):
             },
         }
 
+    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
+    async def x402_attest(service_id: str, raw: bool = False) -> dict:
+        """
+        Fetch a signed EdDSA attestation (JWT) for a registered x402 service.
+
+        The attestation contains cryptographically signed quality measurements:
+        uptime %, avg latency, health status, and facilitator compatibility.
+        Implements the ERC-8004 coldStartSignals spec (coinbase/x402#1375).
+        Verify offline using GET /jwks. Valid for 24 hours.
+
+        Free — no payment required.
+
+        Args:
+            service_id: The service ID from the catalog (e.g. 'legacy/cf-pay-per-crawl').
+                        Use x402_browse to find valid service IDs.
+            raw: If True, return the raw JWT string for embedding. Default False returns
+                 a human-readable summary of the signed measurements.
+
+        Returns:
+            dict with attestation data — quality measurements, facilitator info,
+            issued_at, verify_at (JWKS URL), and either a human-readable summary
+            or the raw JWT.
+        """
+        import httpx as _httpx
+        import base64 as _b64
+        import json as _json
+        DISCOVERY_API = "https://x402-discovery-api.onrender.com"
+        try:
+            async with _httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{DISCOVERY_API}/v1/attest/{service_id}")
+                if resp.status_code == 404:
+                    return {
+                        "error": f"Service '{service_id}' not found in the registry.",
+                        "suggestion": "Use x402_browse to find valid service IDs."
+                    }
+                if resp.status_code == 503:
+                    return {"error": "Attestation signing not configured on this server."}
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            return {"error": f"Attestation error: {e}"}
+
+        jwt_str = data.get("attestation", "")
+
+        if raw:
+            return {"jwt": jwt_str, "issued_at": data.get("issued_at"), "verify_at": data.get("verify_at")}
+
+        try:
+            parts = jwt_str.split(".")
+            payload_bytes = _b64.urlsafe_b64decode(parts[1] + "==")
+            payload = _json.loads(payload_bytes)
+            quality = payload.get("quality", {})
+            facilitator = payload.get("facilitator", {})
+            chain = payload.get("chainVerifications", [])
+            return {
+                "service_id": service_id,
+                "service_name": data.get("service_name", service_id),
+                "quality": {
+                    "health_status": quality.get("health_status"),
+                    "uptime_pct": quality.get("uptime_pct"),
+                    "avg_latency_ms": quality.get("avg_latency_ms"),
+                    "last_checked": quality.get("last_checked"),
+                },
+                "facilitator": {
+                    "compatible": facilitator.get("compatible"),
+                    "count": facilitator.get("count"),
+                    "recommended": facilitator.get("recommended"),
+                },
+                "chain_verifications": chain,
+                "issued_at": data.get("issued_at"),
+                "expires_in": "24 hours",
+                "verify_at": data.get("verify_at"),
+                "spec": data.get("spec"),
+                "jwt_preview": jwt_str[:80] + "..." if len(jwt_str) > 80 else jwt_str,
+            }
+        except Exception:
+            return {
+                "service_id": service_id,
+                "issued_at": data.get("issued_at"),
+                "verify_at": data.get("verify_at"),
+                "jwt": jwt_str,
+            }
+
     @x402_mcp.prompt
     def find_service_for_task(task: str) -> str:
         """Find the best x402 service for a specific task.

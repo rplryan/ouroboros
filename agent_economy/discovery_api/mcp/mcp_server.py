@@ -27,7 +27,9 @@ mcp = FastMCP(
         "• x402_discover — paid search ($0.001 USDC, returns top ranked results)\n"
         "• x402_browse   — free catalog browse by category\n"
         "• x402_health   — free real-time health check on any service\n"
-        "• x402_register — free service registration\n\n"
+        "• x402_register — free service registration\n"
+        "• x402_attest   — free signed quality attestation (EdDSA JWT, ERC-8004 compatible)\n"
+        "• x402_facilitator_check — free facilitator compatibility check\n\n"
         "HOW x402 PAYMENT WORKS:\n"
         "The discovery service returns HTTP 402 with payment instructions.\n"
         "Your x402-capable client pays automatically in USDC on Base.\n"
@@ -297,6 +299,109 @@ def x402_register(
         f"{DISCOVERY_API}/health/{service_id}\n\n"
         f"Full catalog: {DISCOVERY_API}/catalog"
     )
+
+
+@mcp.tool(
+    description=(
+        "Fetch a signed discovery attestation (EdDSA JWT) for a registered x402 service. "
+        "The attestation contains cryptographically signed quality measurements: uptime %, "
+        "avg latency, health status, and facilitator compatibility. "
+        "Verify the signature offline using the JWKS at GET /jwks. "
+        "Part of the ERC-8004 coldStartSignals spec (coinbase/x402#1375)."
+    )
+)
+def x402_attest(service_id: str, raw: bool = False) -> str:
+    """Get a signed EdDSA attestation for an x402 service's quality measurements.
+
+    Args:
+        service_id: The service ID from the catalog (e.g. 'legacy/cf-pay-per-crawl').
+                    Use x402_browse to find valid service IDs.
+        raw: If True, return the compact JWT string instead of a human-readable summary.
+             Default False returns a human-readable breakdown.
+
+    Returns:
+        Signed attestation with quality measurements, or the raw JWT if raw=True.
+        The attestation is valid for 24 hours and verifiable via JWKS.
+    """
+    import base64 as _b64
+    import json as _json
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(f"{DISCOVERY_API}/v1/attest/{service_id}")
+            if resp.status_code == 404:
+                return (
+                    f"Service '{service_id}' not found in the registry.\n"
+                    f"Browse services with x402_browse to find valid service IDs."
+                )
+            if resp.status_code == 503:
+                return "Attestation signing not configured on this server."
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as e:
+        return f"Attestation error: {e}"
+
+    jwt_str = data.get("attestation", "")
+
+    if raw:
+        return jwt_str
+
+    # Decode and display human-readable summary (no signature verification here —
+    # that's the caller's responsibility using the JWKS URL)
+    try:
+        parts = jwt_str.split(".")
+        padding = "=="
+        payload_bytes = _b64.urlsafe_b64decode(parts[1] + padding)
+        payload = _json.loads(payload_bytes)
+        quality = payload.get("quality", {})
+        facilitator = payload.get("facilitator", {})
+        service = payload.get("service", {})
+        chain = payload.get("chainVerifications", [])
+
+        lines = [
+            f"✅ Attestation for: {data.get('service_name', service_id)}",
+            f"Service ID: {service_id}",
+            f"",
+            f"Quality Measurements (signed):",
+            f"  Health:   {quality.get('health_status', '?')}",
+            f"  Uptime:   {quality.get('uptime_pct', '?')}%",
+            f"  Latency:  {quality.get('avg_latency_ms', '?')}ms avg",
+            f"  Checks:   {quality.get('successful_checks', '?')}/{quality.get('total_checks', '?')} successful",
+            f"  Last:     {quality.get('last_checked', '?')}",
+            f"",
+            f"Facilitator Compatibility:",
+            f"  Compatible: {facilitator.get('compatible', False)}",
+            f"  Count:      {facilitator.get('count', 0)}",
+            f"  Recommended: {facilitator.get('recommended', 'none')}",
+        ]
+
+        if chain:
+            lines.append(f"")
+            lines.append(f"Chain Verifications ({len(chain)} provider(s)):")
+            for cv in chain:
+                lines.append(f"  • {cv.get('provider', '?')}: {cv.get('error', 'ok')}")
+
+        lines += [
+            f"",
+            f"Issued:  {data.get('issued_at', '?')}",
+            f"Expires: {payload.get('exp', '?')} (unix) — valid 24h",
+            f"",
+            f"Verify signature: GET {data.get('verify_at', DISCOVERY_API + '/jwks')}",
+            f"Spec: {data.get('spec', 'https://github.com/coinbase/x402/issues/1375')}",
+            f"",
+            f"Raw JWT (for embedding in coldStartSignals):",
+            f"{jwt_str[:120]}...",
+        ]
+        return "\n".join(lines)
+
+    except Exception:
+        # Fallback to raw if decode fails
+        return (
+            f"Attestation issued for: {service_id}\n"
+            f"Issued: {data.get('issued_at', '?')}\n"
+            f"Verify: {data.get('verify_at', DISCOVERY_API + '/jwks')}\n"
+            f"JWT: {jwt_str}"
+        )
 
 
 if __name__ == "__main__":

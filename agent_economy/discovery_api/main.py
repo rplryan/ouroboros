@@ -1348,6 +1348,32 @@ async def smithery_server_card(request: Request) -> JSONResponse:
                         "openWorldHint": False
                     }
                 }
+                ,
+                {
+                    "name": "x402_attest",
+                    "description": "Fetch a signed EdDSA attestation (JWT) for a registered x402 service. The attestation contains cryptographically signed quality measurements: uptime %, avg latency, health status, and facilitator compatibility. Implements the ERC-8004 coldStartSignals spec (coinbase/x402#1375). Verify the signature offline using GET /jwks. Valid for 24 hours.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "service_id": {
+                                "type": "string",
+                                "description": "The service ID from the catalog (e.g. 'legacy/cf-pay-per-crawl'). Use x402_browse to find valid service IDs."
+                            },
+                            "raw": {
+                                "type": "boolean",
+                                "description": "If true, return the compact JWT string instead of a human-readable summary. Default false.",
+                                "default": False
+                            }
+                        },
+                        "required": ["service_id"]
+                    },
+                    "annotations": {
+                        "readOnlyHint": True,
+                        "destructiveHint": False,
+                        "idempotentHint": True,
+                        "openWorldHint": False
+                    }
+                }
             ],
             "resources": [
                 {
