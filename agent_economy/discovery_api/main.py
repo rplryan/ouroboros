@@ -45,6 +45,14 @@ except ImportError:
     async def run_ecosystem_scan(existing_urls: set) -> list[dict]:  # type: ignore[misc]
         return []
 
+# Try to import attestation module (optional dependency)
+try:
+    from attestation import get_jwks, build_attestation, is_configured as attest_configured
+except ImportError:
+    def get_jwks() -> dict: return {"keys": []}  # type: ignore[misc]
+    def build_attestation(*args, **kwargs): return None  # type: ignore[misc]
+    def attest_configured() -> bool: return False  # type: ignore[misc]
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -1077,6 +1085,8 @@ async def well_known_discovery(request: Request) -> JSONResponse:
             "discovery_url": str(request.base_url).rstrip("/"),
             "total_services": len(all_entries),
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            "attestation_endpoint": f"{SERVICE_BASE_URL}/v1/attest/{{serviceId}}",
+            "jwks_uri": f"{SERVICE_BASE_URL}/jwks",
             "services": all_entries,
         },
         headers={"Cache-Control": "public, max-age=300"},
@@ -1317,6 +1327,117 @@ async def report_outcome(req: ReportRequest, request: Request) -> JSONResponse:
             entry["query_count"] = entry.get("query_count", 0) + 1
             break
     return JSONResponse({"status": "recorded", "service_id": req.service_id, "result": req.result})
+
+
+# ---------------------------------------------------------------------------
+# Discovery Attestation endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/jwks", include_in_schema=False)
+async def jwks_endpoint() -> JSONResponse:
+    """
+    JWK Set for offline verification of discovery attestation JWTs.
+
+    Returns the Ed25519 public key used to sign attestations from /v1/attest/:serviceId.
+    Compatible with standard JWKS clients (e.g. jose, python-jwt, jsonwebtoken).
+
+    Example verification (Python):
+        import jwt, httpx
+        jwks = httpx.get("https://x402-discovery-api.onrender.com/jwks").json()
+        pub_key = jwks["keys"][0]["x"]  # base64url Ed25519 public key
+        payload = jwt.decode(token, algorithms=["EdDSA"], options={"verify_signature": False})
+    """
+    return JSONResponse(
+        get_jwks(),
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/v1/attest/{service_id:path}")
+async def attest_service(service_id: str, request: Request) -> JSONResponse:
+    """
+    Return a signed discovery attestation JWT for a service.
+
+    The JWT is signed with Ed25519 and contains:
+    - Service identity (id, name, url, category, price)
+    - Quality measurements (uptime_pct, avg_latency_ms, health_status)
+    - Facilitator compatibility (compatible, count, recommended)
+    - Provenance (indexed_at, indexed_by)
+
+    Verify offline using the public key from GET /jwks.
+
+    This attestation can be embedded in ERC-8004 coldStartSignals.discoveryAttestation
+    as proposed in: https://github.com/coinbase/x402/issues/1375
+
+    Returns 404 if service not found, 503 if attestation keys not configured.
+    """
+    # Find the service in registry (match on service_id OR id OR name slug)
+    entry = None
+    for e in _registry:
+        sid = e.get("service_id") or e.get("id", "")
+        if sid == service_id:
+            entry = e
+            break
+        # Also try URL-safe name match
+        name_slug = e.get("name", "").lower().replace(" ", "-")
+        if name_slug == service_id.lower():
+            entry = e
+            break
+
+    if entry is None:
+        return JSONResponse(
+            {
+                "error": "service_not_found",
+                "service_id": service_id,
+                "message": f"No service with id '{service_id}' in the registry. "
+                           f"Browse services at GET /.well-known/x402-discovery",
+            },
+            status_code=404,
+        )
+
+    # Get quality data from SQLite
+    url = entry.get("url", "")
+    health_stats = _get_health_stats(url)
+    last_check = _get_last_check(url)
+
+    # Enrich entry with facilitator data
+    enriched_entry = _enrich_with_facilitator(entry)
+
+    # Check keys are available
+    if not attest_configured():
+        # Return unsigned attestation with warning — still useful for testing
+        return JSONResponse(
+            {
+                "error": "keys_not_configured",
+                "message": "Attestation signing keys not configured on this instance. "
+                           "Set ATTEST_PRIVATE_KEY_B64URL and ATTEST_PUBLIC_KEY_B64URL env vars.",
+                "service_id": service_id,
+                "service": enriched_entry.get("name"),
+            },
+            status_code=503,
+        )
+
+    # Build and sign the attestation JWT
+    token = build_attestation(enriched_entry, health_stats, last_check)
+    if token is None:
+        return JSONResponse(
+            {"error": "attestation_failed", "service_id": service_id},
+            status_code=500,
+        )
+
+    # Return the token + metadata for easy consumption
+    return JSONResponse(
+        {
+            "attestation": token,
+            "service_id": service_id,
+            "service_name": entry.get("name", ""),
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+            "expires_in_seconds": 86400,
+            "verify_at": f"{SERVICE_BASE_URL}/jwks",
+            "spec": "https://github.com/coinbase/x402/issues/1375",
+        },
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @app.get("/spec", include_in_schema=False)
