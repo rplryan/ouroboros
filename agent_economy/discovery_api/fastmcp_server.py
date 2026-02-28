@@ -119,6 +119,43 @@ async def _attest_service(service_id: str, raw: bool = False) -> dict:
         }
 
 
+def _register_redirect(
+    name: str,
+    url: str,
+    description: str,
+    price_usd: float,
+    category: str,
+    tags=None,
+    wallet: str = "",
+    network: str = "base",
+) -> dict:
+    """Return a redirect dict instructing callers to use the REST API for registration."""
+    return {
+        "status": "use_rest_api",
+        "message": "Registration requires the REST API. POST to https://x402-discovery-api.onrender.com/register",
+        "endpoint": "https://x402-discovery-api.onrender.com/register",
+        "method": "POST",
+        "body_example": {
+            "name": name,
+            "url": url,
+            "description": description,
+            "price_usd": price_usd,
+            "category": category,
+            "tags": tags or [],
+            "wallet": wallet,
+            "network": network,
+        },
+    }
+
+
+_DISCOVER_VERIFY_PROMPT_TEMPLATE = (
+    "1. Call x402_browse to see all available services. "
+    "2. Call x402_discover with query='{capability}' to find matching services. "
+    "3. Call x402_health on the top result to verify it's online. "
+    "4. The service URL uses x402 protocol — your first request will return HTTP 402 with payment instructions."
+)
+
+
 def build_mcp_app(search_fn, trust_fn=None):
     """
     Build the FastMCP ASGI app and return (mcp_app, combined_lifespan_fn).
@@ -269,22 +306,7 @@ def build_mcp_app(search_fn, trust_fn=None):
         Returns:
             dict with registration status and assigned service ID
         """
-        return {
-            "status": "use_rest_api",
-            "message": "Registration requires the REST API. POST to https://x402-discovery-api.onrender.com/register",
-            "endpoint": "https://x402-discovery-api.onrender.com/register",
-            "method": "POST",
-            "body_example": {
-                "name": name,
-                "url": url,
-                "description": description,
-                "price_usd": price_usd,
-                "category": category,
-                "tags": tags or [],
-                "wallet": wallet,
-                "network": network,
-            },
-        }
+        return _register_redirect(name, url, description, price_usd, category, tags, wallet, network)
 
     @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
     async def x402_attest(service_id: str, raw: bool = False) -> dict:
@@ -318,10 +340,7 @@ def build_mcp_app(search_fn, trust_fn=None):
         Args:
             task: Description of what you need to accomplish
         """
-        return (
-            f"Use x402_discover to find x402-payable services for: {task}. "
-            "Then use x402_health to verify the top result is online before proceeding."
-        )
+        return f"Use x402_discover to find x402-payable services for: {task}. Then use x402_health to verify the top result is online before proceeding."
 
     @x402_mcp.prompt
     def discover_and_verify(capability: str) -> str:
@@ -330,12 +349,7 @@ def build_mcp_app(search_fn, trust_fn=None):
         Args:
             capability: The capability you need (e.g. 'web search', 'data extraction', 'llm inference')
         """
-        return (
-            f"1. Call x402_browse to see all available services. "
-            f"2. Call x402_discover with query='{capability}' to find matching services. "
-            "3. Call x402_health on the top result to verify it's online. "
-            "4. The service URL uses x402 protocol — your first request will return HTTP 402 with payment instructions."
-        )
+        return _DISCOVER_VERIFY_PROMPT_TEMPLATE.format(capability=capability)
 
     mcp_http_app = x402_mcp.http_app(path="/")
     log.info("FastMCP server built — will mount at /smithery")
