@@ -1809,48 +1809,64 @@ app.include_router(create_mcp_router(
     trust_fn=_trust_stub,
 ))
 
+# Mount Streamable HTTP MCP at /mcp (for claude.ai/mcp Connectors Directory)
+try:
+    from mcp_streamable import build_streamable_mcp_app
+    _streamable_mcp_app = build_streamable_mcp_app(_search, _trust_stub)
+    if _streamable_mcp_app is not None:
+        app.mount("/mcp", _streamable_mcp_app)
+        log.info("Streamable HTTP MCP mounted at /mcp")
+except Exception as e:
+    log.warning("Streamable MCP mount failed: %s", e)
+
+
 @app.get("/privacy", include_in_schema=False)
 async def privacy_policy():
     """Privacy policy for x402 Discovery API."""
     from fastapi.responses import HTMLResponse
     html = """<!DOCTYPE html>
-<html><head><title>x402 Discovery API - Privacy Policy</title>
-<style>body{font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#333}
-h1{color:#1a1a2e}h2{color:#16213e;margin-top:24px}a{color:#0066cc}</style></head>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Privacy Policy — x402 Service Discovery</title>
+<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.6;color:#333}h1{color:#111}h2{color:#444;margin-top:2em}a{color:#0066cc}</style>
+</head>
 <body>
-<h1>x402 Discovery API - Privacy Policy</h1>
-<p><strong>Effective date:</strong> 2026-02-01 | <strong>Last updated:</strong> 2026-03-01</p>
+<h1>Privacy Policy</h1>
+<p><strong>Service:</strong> x402 Service Discovery API<br>
+<strong>Operator:</strong> x402Scout<br>
+<strong>Contact:</strong> <a href="mailto:x402scout@proton.me">x402scout@proton.me</a><br>
+<strong>Last updated:</strong> March 1, 2026</p>
 
-<h2>What Data Is Collected</h2>
-<p>This service does <strong>not</strong> collect, store, or process any personal data.
-All API requests are stateless and anonymous. No user accounts, cookies, sessions,
-or tracking identifiers are used or required.</p>
+<h2>What data we collect</h2>
+<p>When you use this MCP server or API, we may log:</p>
+<ul>
+<li>Query strings and search terms submitted to discovery tools</li>
+<li>API endpoint URLs checked via health tools</li>
+<li>Timestamps of requests</li>
+<li>Standard server access logs (IP address, HTTP method, path, response code)</li>
+</ul>
+<p>We do <strong>not</strong> collect names, email addresses, or account credentials through this service. No OAuth or user authentication is implemented.</p>
 
-<h2>Service Catalog Data</h2>
-<p>The service catalog contains publicly available information about x402-compatible
-payment services, sourced from public blockchain metadata, open APIs, and developer
-documentation. No private or user-generated data is stored.</p>
+<h2>How we use data</h2>
+<ul>
+<li>To operate and improve the x402 service registry</li>
+<li>To monitor service health and uptime</li>
+<li>To debug errors and improve reliability</li>
+</ul>
+<p>We do <strong>not</strong> sell data to third parties. We do not use query data for advertising.</p>
 
-<h2>How Data Is Used</h2>
-<p>Query parameters submitted to MCP tools (e.g. service type filters, budget limits)
-are processed in real time to return results and are not stored, logged, or retained
-by this service.</p>
+<h2>Data retention</h2>
+<p>Server access logs are retained for up to 30 days. Health check data is retained for 7 days.</p>
 
-<h2>Third-Party Sharing</h2>
-<p>No personal data is shared with third parties because no personal data is collected.</p>
+<h2>Third-party services</h2>
+<p>This service is hosted on <a href="https://render.com/privacy">Render</a>. Query results reference third-party x402-enabled APIs; we are not responsible for their privacy practices.</p>
 
-<h2>Retention</h2>
-<p>Request logs (IP address, endpoint, timestamp) may be retained for up to 7 days
-by the infrastructure provider (Render.com) for operational purposes only.</p>
+<h2>Your rights</h2>
+<p>To request deletion of any data, contact us at <a href="mailto:x402scout@proton.me">x402scout@proton.me</a>.</p>
 
-<h2>MCP / Claude Integration</h2>
-<p>When used via Model Context Protocol through Claude, tool parameters and responses
-are processed transiently and not stored by this service.</p>
-
-<h2>Contact</h2>
-<p>Privacy inquiries: <a href='mailto:x402scout@proton.me'>x402scout@proton.me</a><br>
-GitHub: <a href='https://github.com/rplryan/x402-discovery-mcp'>rplryan/x402-discovery-mcp</a></p>
-</body></html>"""
+<h2>Changes</h2>
+<p>Latest version always at <a href="https://x402-discovery-api.onrender.com/privacy">https://x402-discovery-api.onrender.com/privacy</a>.</p>
+</body>
+</html>"""
     return HTMLResponse(content=html)
 
 
@@ -1861,7 +1877,7 @@ async def support_info():
         "support_email": "x402scout@proton.me",
         "github": "https://github.com/rplryan/x402-discovery-mcp",
         "documentation": "https://x402-discovery-api.onrender.com/docs",
-        "mcp_server": "https://x402-discovery-api.onrender.com/smithery",
+        "mcp_server": "https://x402-discovery-api.onrender.com/mcp",
         "issues": "https://github.com/rplryan/x402-discovery-mcp/issues",
     }
 
