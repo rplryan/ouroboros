@@ -10,6 +10,7 @@ Asset: USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -44,6 +45,13 @@ try:
 except ImportError:
     async def run_ecosystem_scan(existing_urls: set) -> list[dict]:  # type: ignore[misc]
         return []
+
+# Try to import Streamable HTTP MCP builder (optional dependency)
+try:
+    from mcp_streamable import build_streamable_mcp_app
+except ImportError:
+    def build_streamable_mcp_app(*args, **kwargs):  # type: ignore[misc]
+        return None, None
 
 # Try to import attestation module (optional dependency)
 try:
@@ -785,8 +793,23 @@ async def _register_with_payai() -> None:
     except Exception as exc:
         log.warning("PayAI status check failed (non-fatal): %s", exc)
 
+async def _trust_stub(wallet: str | None = None, service_url: str | None = None) -> dict:
+    """Stub trust function — ERC-8004 integration temporarily disabled."""
+    return {
+        "status": "pending",
+        "wallet": wallet,
+        "service_url": service_url,
+        "message": "ERC-8004 trust verification temporarily unavailable",
+    }
+
+
+# Build Streamable HTTP MCP app at module level (must be before FastAPI())
+_mcp_instance, _streamable_mcp_asgi = build_streamable_mcp_app(_search, _trust_stub)
+
+
 @asynccontextmanager
 async def _app_lifespan(app: FastAPI):
+    """Application lifespan — starts background tasks and MCP session manager."""
     init_db()
     log.info("SQLite health DB initialized at %s", DB_PATH)
     health_task = asyncio.create_task(_background_health_checker())
@@ -795,14 +818,28 @@ async def _app_lifespan(app: FastAPI):
     log.info("Background scraper started (x402scan + ecosystem, interval=%ds)", SCRAPE_INTERVAL_SECS)
     # Register with facilitator networks for auto-discovery
     asyncio.create_task(_register_with_payai())
-    yield
-    health_task.cancel()
-    scraper_task.cancel()
-    for t in (health_task, scraper_task):
+    # Start MCP streamable HTTP lifespan (session manager task group)
+    if _streamable_mcp_asgi is not None:
+        async with _streamable_mcp_asgi.lifespan(_streamable_mcp_asgi):
+            try:
+                yield
+            finally:
+                health_task.cancel()
+                scraper_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await health_task
+                with contextlib.suppress(asyncio.CancelledError):
+                    await scraper_task
+    else:
         try:
-            await t
-        except asyncio.CancelledError:
-            pass
+            yield
+        finally:
+            health_task.cancel()
+            scraper_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await health_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await scraper_task
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -819,6 +856,11 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Mount Streamable HTTP MCP ASGI app — must be before any routes
+if _streamable_mcp_asgi is not None:
+    app.mount("/mcp", _streamable_mcp_asgi)
+    log.info("Streamable HTTP MCP mounted at /mcp")
 
 # ---------------------------------------------------------------------------
 # GET / — free
@@ -1579,15 +1621,6 @@ async def spec_redirect(request: Request):
     )
 
 
-# Mount Streamable HTTP MCP at /mcp (for claude.ai/mcp Connectors Directory)
-try:
-    from mcp_streamable import build_streamable_mcp_app
-    _streamable_mcp_app = build_streamable_mcp_app(_search, _trust_stub)
-    if _streamable_mcp_app is not None:
-        app.mount("/mcp", _streamable_mcp_app)
-        log.info("Streamable HTTP MCP mounted at /mcp")
-except Exception as e:
-    log.warning("Streamable MCP mount failed: %s", e)
 
 
 @app.get("/mcp-manifest")

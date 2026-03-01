@@ -60,14 +60,13 @@ def build_streamable_mcp_app(search_fn, trust_fn=None):
         trust_fn: async callable(wallet=..., service_url=...) -> trust profile dict
 
     Returns:
-        ASGI app to mount at /mcp, or None if fastmcp unavailable
+        Tuple of (mcp_instance, asgi_app) to mount at /mcp, or None if fastmcp unavailable
     """
     if not FASTMCP_AVAILABLE:
-        return None
+        return (None, None)
 
     x402_mcp = FastMCP(
         "x402 Service Discovery",
-        stateless_http=True,
         instructions=(
             "Discovers x402-payable APIs for autonomous agents. "
             "Use x402_discover to find endpoints that accept micropayments on Base. "
@@ -247,6 +246,6 @@ def build_streamable_mcp_app(search_fn, trust_fn=None):
         """
         return _DISCOVER_VERIFY_PROMPT_TEMPLATE.format(capability=capability)
 
-    asgi_app = x402_mcp.http_app(path="/")
+    asgi_app = x402_mcp.http_app(path="/", stateless_http=True)
     log.info("Streamable HTTP MCP server built — will mount at /mcp")
-    return asgi_app
+    return x402_mcp, asgi_app
