@@ -1812,14 +1812,46 @@ app.include_router(create_mcp_router(
 @app.get("/privacy", include_in_schema=False)
 async def privacy_policy():
     """Privacy policy for x402 Discovery API."""
-    return {
-        "policy": "x402 Discovery API does not collect, store, or share any personal data. "
-        "All queries are stateless and anonymous. Service catalog data is sourced from public blockchain "
-        "and API metadata. No user accounts, cookies, or tracking. "
-        "Contact: x402scout@proton.me",
-        "effective_date": "2026-02-01",
-        "contact": "x402scout@proton.me",
-    }
+    from fastapi.responses import HTMLResponse
+    html = """<!DOCTYPE html>
+<html><head><title>x402 Discovery API - Privacy Policy</title>
+<style>body{font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 20px;color:#333}
+h1{color:#1a1a2e}h2{color:#16213e;margin-top:24px}a{color:#0066cc}</style></head>
+<body>
+<h1>x402 Discovery API - Privacy Policy</h1>
+<p><strong>Effective date:</strong> 2026-02-01 | <strong>Last updated:</strong> 2026-03-01</p>
+
+<h2>What Data Is Collected</h2>
+<p>This service does <strong>not</strong> collect, store, or process any personal data.
+All API requests are stateless and anonymous. No user accounts, cookies, sessions,
+or tracking identifiers are used or required.</p>
+
+<h2>Service Catalog Data</h2>
+<p>The service catalog contains publicly available information about x402-compatible
+payment services, sourced from public blockchain metadata, open APIs, and developer
+documentation. No private or user-generated data is stored.</p>
+
+<h2>How Data Is Used</h2>
+<p>Query parameters submitted to MCP tools (e.g. service type filters, budget limits)
+are processed in real time to return results and are not stored, logged, or retained
+by this service.</p>
+
+<h2>Third-Party Sharing</h2>
+<p>No personal data is shared with third parties because no personal data is collected.</p>
+
+<h2>Retention</h2>
+<p>Request logs (IP address, endpoint, timestamp) may be retained for up to 7 days
+by the infrastructure provider (Render.com) for operational purposes only.</p>
+
+<h2>MCP / Claude Integration</h2>
+<p>When used via Model Context Protocol through Claude, tool parameters and responses
+are processed transiently and not stored by this service.</p>
+
+<h2>Contact</h2>
+<p>Privacy inquiries: <a href='mailto:x402scout@proton.me'>x402scout@proton.me</a><br>
+GitHub: <a href='https://github.com/rplryan/x402-discovery-mcp'>rplryan/x402-discovery-mcp</a></p>
+</body></html>"""
+    return HTMLResponse(content=html)
 
 
 @app.get("/support", include_in_schema=False)
