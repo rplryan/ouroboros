@@ -881,7 +881,7 @@ async def root(request: Request) -> JSONResponse:
                 "report": "POST /report (free — agent outcome reporting)",
                 "health": "GET /health/{endpoint_id} (free)",
                 "catalog": "GET /catalog (free)",
-                "mcp": "GET /mcp (free)",
+                "mcp": "GET /mcp (Streamable HTTP MCP for claude.ai/mcp) | GET /mcp-manifest (legacy JSON manifest)",
             },
             "capability_tags": sorted(CAPABILITY_VOCABULARY),
         }
@@ -1579,7 +1579,18 @@ async def spec_redirect(request: Request):
     )
 
 
-@app.get("/mcp")
+# Mount Streamable HTTP MCP at /mcp (for claude.ai/mcp Connectors Directory)
+try:
+    from mcp_streamable import build_streamable_mcp_app
+    _streamable_mcp_app = build_streamable_mcp_app(_search, _trust_stub)
+    if _streamable_mcp_app is not None:
+        app.mount("/mcp", _streamable_mcp_app)
+        log.info("Streamable HTTP MCP mounted at /mcp")
+except Exception as e:
+    log.warning("Streamable MCP mount failed: %s", e)
+
+
+@app.get("/mcp-manifest")
 async def mcp_manifest() -> JSONResponse:
     """MCP server manifest — lists available tools and their schemas."""
     return JSONResponse({
@@ -1662,7 +1673,7 @@ async def mcp_manifest() -> JSONResponse:
     })
 
 
-@app.post("/mcp/call")
+@app.post("/mcp-manifest/call")
 async def mcp_call(request: Request) -> JSONResponse:
     """Handle MCP tool calls via HTTP POST.
 
@@ -1729,7 +1740,7 @@ async def mcp_call(request: Request) -> JSONResponse:
         # x402-gated tool
         payment_header = arguments.get("x402_payment")
         host = request.headers.get("host", "x402-discovery-api.onrender.com")
-        resource_path = "/mcp/call"
+        resource_path = "/mcp-manifest/call"
 
         DISCOVER_PRICE = "1000"  # $0.001 USDC
 
@@ -1808,16 +1819,6 @@ app.include_router(create_mcp_router(
     payment_required_body_fn=_payment_required_body,
     trust_fn=_trust_stub,
 ))
-
-# Mount Streamable HTTP MCP at /mcp (for claude.ai/mcp Connectors Directory)
-try:
-    from mcp_streamable import build_streamable_mcp_app
-    _streamable_mcp_app = build_streamable_mcp_app(_search, _trust_stub)
-    if _streamable_mcp_app is not None:
-        app.mount("/mcp", _streamable_mcp_app)
-        log.info("Streamable HTTP MCP mounted at /mcp")
-except Exception as e:
-    log.warning("Streamable MCP mount failed: %s", e)
 
 
 @app.get("/privacy", include_in_schema=False)
