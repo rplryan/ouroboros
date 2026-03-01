@@ -1822,7 +1822,6 @@ except Exception as e:
 
 @app.get("/privacy", include_in_schema=False)
 async def privacy_policy():
-    """Privacy policy for x402 Discovery API."""
     from fastapi.responses import HTMLResponse
     html = """<!DOCTYPE html>
 <html lang="en">
@@ -1855,16 +1854,16 @@ async def privacy_policy():
 <p>We do <strong>not</strong> sell data to third parties. We do not use query data for advertising.</p>
 
 <h2>Data retention</h2>
-<p>Server access logs are retained for up to 30 days. Health check data is retained for 7 days.</p>
+<p>Server access logs are retained for up to 30 days. Health check data (uptime/latency statistics) is retained for 7 days as described in our API documentation.</p>
 
 <h2>Third-party services</h2>
-<p>This service is hosted on <a href="https://render.com/privacy">Render</a>. Query results reference third-party x402-enabled APIs; we are not responsible for their privacy practices.</p>
+<p>This service is hosted on <a href="https://render.com/privacy">Render</a>. Query results reference third-party x402-enabled APIs; we are not responsible for the privacy practices of those services.</p>
 
 <h2>Your rights</h2>
-<p>To request deletion of any data, contact us at <a href="mailto:x402scout@proton.me">x402scout@proton.me</a>.</p>
+<p>To request deletion of any data associated with your queries, contact us at <a href="mailto:x402scout@proton.me">x402scout@proton.me</a>.</p>
 
 <h2>Changes</h2>
-<p>Latest version always at <a href="https://x402-discovery-api.onrender.com/privacy">https://x402-discovery-api.onrender.com/privacy</a>.</p>
+<p>We may update this policy. The latest version is always at <a href="https://x402-discovery-api.onrender.com/privacy">https://x402-discovery-api.onrender.com/privacy</a>.</p>
 </body>
 </html>"""
     return HTMLResponse(content=html)
@@ -1872,7 +1871,6 @@ async def privacy_policy():
 
 @app.get("/support", include_in_schema=False)
 async def support_info():
-    """Support information for x402 Discovery API."""
     return {
         "support_email": "x402scout@proton.me",
         "github": "https://github.com/rplryan/x402-discovery-mcp",
