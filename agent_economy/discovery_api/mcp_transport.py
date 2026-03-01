@@ -168,6 +168,12 @@ MCP_TOOLS = [
             },
             "required": [],
         },
+        "annotations": {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": True,
+        },
     },
 ]
 

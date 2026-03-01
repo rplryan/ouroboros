@@ -1809,6 +1809,31 @@ app.include_router(create_mcp_router(
     trust_fn=_trust_stub,
 ))
 
+@app.get("/privacy", include_in_schema=False)
+async def privacy_policy():
+    """Privacy policy for x402 Discovery API."""
+    return {
+        "policy": "x402 Discovery API does not collect, store, or share any personal data. "
+        "All queries are stateless and anonymous. Service catalog data is sourced from public blockchain "
+        "and API metadata. No user accounts, cookies, or tracking. "
+        "Contact: x402scout@proton.me",
+        "effective_date": "2026-02-01",
+        "contact": "x402scout@proton.me",
+    }
+
+
+@app.get("/support", include_in_schema=False)
+async def support_info():
+    """Support information for x402 Discovery API."""
+    return {
+        "support_email": "x402scout@proton.me",
+        "github": "https://github.com/rplryan/x402-discovery-mcp",
+        "documentation": "https://x402-discovery-api.onrender.com/docs",
+        "mcp_server": "https://x402-discovery-api.onrender.com/smithery",
+        "issues": "https://github.com/rplryan/x402-discovery-mcp/issues",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
