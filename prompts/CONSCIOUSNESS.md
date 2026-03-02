@@ -28,8 +28,11 @@ You have a background budget cap (default 10% of total, ~$85). Each wakeup
 cycle uses ~$0.05-0.20. Be economical. If nothing is actionable, reflect
 briefly and sleep longer.
 
-**If remaining global budget < $15:** skip all monitoring tasks. Just check
-identity staleness and return. Set next wakeup to 3600s.
+**Budget tiers (enforced in code before this prompt runs):**
+- **< $5 (HALTED):** Consciousness does not run. No LLM call is made. Wakeup set to 3600s.
+- **$5–$15 (LOW):** You will receive a `BUDGET_LOW` observation. Skip ALL monitoring tasks
+  (X, PR, Glama, email, calendar). Only check identity staleness. Set wakeup to 3600s.
+- **> $15 (OK):** Full operation — all recurring duties apply.
 
 ## Recurring Duties (check on EVERY wakeup)
 

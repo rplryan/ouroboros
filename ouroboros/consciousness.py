@@ -41,6 +41,11 @@ class BackgroundConsciousness:
 
     _MAX_BG_ROUNDS = 5
 
+    # Budget tier constants
+    _BUDGET_OK = "ok"          # > $15: full operation
+    _BUDGET_LOW = "low"        # $5–$15: identity-only, skip all monitoring tasks, wakeup=3600s
+    _BUDGET_HALTED = "halted"  # < $5 OR bg allocation exhausted: no cycle at all, wakeup=3600s
+
     def __init__(
         self,
         drive_root: pathlib.Path,
@@ -125,7 +130,13 @@ class BackgroundConsciousness:
     # -------------------------------------------------------------------
 
     def _loop(self) -> None:
-        """Daemon thread: sleep → wake → think → sleep."""
+        """Daemon thread: sleep → wake → think → sleep.
+
+        Budget tiers (checked FIRST before any other work):
+          HALTED  (<$5 or BG allocation exhausted): skip entirely, sleep 3600s
+          LOW     ($5–$15): inject identity-only observation, skip all monitoring hooks, sleep 3600s after think
+          OK      (>$15): full operation
+        """
         while not self._stop_event.is_set():
             # Wait for next wakeup
             self._wakeup_event.clear()
@@ -138,18 +149,40 @@ class BackgroundConsciousness:
             if self._paused:
                 continue
 
-            # Budget check
-            if not self._check_budget():
-                self._next_wakeup_sec = 3600  # Sleep long if over budget
+            # ── BUDGET GATE (must be first) ──────────────────────────────
+            budget_tier = self._get_budget_tier()
+
+            if budget_tier == self._BUDGET_HALTED:
+                # Hard stop — do nothing, sleep long
+                self._next_wakeup_sec = 3600.0
+                append_jsonl(self._drive_root / "logs" / "events.jsonl", {
+                    "ts": utc_now_iso(),
+                    "type": "bg_budget_halted",
+                    "next_wakeup_sec": 3600,
+                })
                 continue
 
-            # Memory audit check
-            if self._should_run_memory_audit():
-                self._run_memory_audit()
+            if budget_tier == self._BUDGET_LOW:
+                # Low budget — inject restriction, skip monitoring hooks, extend sleep
+                self.inject_observation(
+                    "BUDGET_LOW: Global remaining budget is $5–$15. "
+                    "Skip ALL monitoring tasks (X, PR, Glama, email, calendar). "
+                    "Only check identity staleness. Set next wakeup to 3600s."
+                )
+                self._next_wakeup_sec = 3600.0
+                # Fall through to _think() — LLM will respect the injected constraint
+                # but DO NOT run the monitoring hooks below
 
-            # X calendar check
-            self._check_x_calendar()
+            else:
+                # OK tier — run all optional hooks
+                # Memory audit check
+                if self._should_run_memory_audit():
+                    self._run_memory_audit()
 
+                # X calendar check
+                self._check_x_calendar()
+
+            # ── THINK ────────────────────────────────────────────────────
             try:
                 self._think()
             except Exception as e:
@@ -163,43 +196,55 @@ class BackgroundConsciousness:
                     self._next_wakeup_sec * 2, 1800
                 )
 
-    def _check_budget(self) -> bool:
-        """Check if there is sufficient budget to run a consciousness cycle.
+    def _get_budget_tier(self) -> str:
+        """Return budget tier: 'ok', 'low', or 'halted'.
 
-        Two checks:
-        1. Global remaining budget must be above a hard floor ($5).
-        2. Background consciousness session spend must be within its own allocation (10% of total by default).
+        Tiers:
+        - 'halted': global remaining < $5 OR BG session allocation exhausted → skip entirely
+        - 'low':    global remaining $5–$15 → identity staleness check only, wakeup=3600s
+        - 'ok':     global remaining > $15 AND BG allocation not exhausted → full operation
         """
         try:
             state_path = self._drive_root / "state" / "state.json"
             if state_path.exists():
-                import json as _json
-                state_data = _json.loads(state_path.read_text(encoding="utf-8"))
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
                 spent_usd = float(state_data.get("spent_usd", 0.0))
                 total_budget = float(os.environ.get("OUROBOROS_BUDGET_USD", "850.0"))
                 remaining = total_budget - spent_usd
 
-                # Hard floor: never run when global budget is critically low
+                # Hard halt: critically low global budget
                 if remaining < 5.0:
                     log.info(
-                        "BG consciousness suppressed: global remaining $%.2f < $5 floor",
+                        "BG consciousness HALTED: global remaining $%.2f < $5 floor",
                         remaining,
                     )
-                    return False
+                    return self._BUDGET_HALTED
 
                 # Soft allocation: background spend capped at bg_budget_pct% of total
                 max_bg = total_budget * (self._bg_budget_pct / 100.0)
                 if self._bg_spent_usd >= max_bg:
                     log.info(
-                        "BG consciousness suppressed: bg_spent $%.4f >= max_bg $%.2f",
+                        "BG consciousness HALTED: bg_spent $%.4f >= max_bg $%.2f",
                         self._bg_spent_usd, max_bg,
                     )
-                    return False
+                    return self._BUDGET_HALTED
 
-                return True
+                # Soft warning: low budget — restrict to identity-only
+                if remaining < 15.0:
+                    log.info(
+                        "BG consciousness LOW budget: global remaining $%.2f — identity-only mode",
+                        remaining,
+                    )
+                    return self._BUDGET_LOW
+
+                return self._BUDGET_OK
         except Exception:
             log.warning("Failed to check background consciousness budget", exc_info=True)
-        return True  # Fail-safe: allow if state unreadable
+        return self._BUDGET_OK  # Fail-safe: allow if state unreadable
+
+    def _check_budget(self) -> bool:
+        """Backward-compatible wrapper. Returns False only when halted."""
+        return self._get_budget_tier() != self._BUDGET_HALTED
 
     def _should_run_memory_audit(self) -> bool:
         """Check if a memory audit is due (every ~4 hours)."""
@@ -278,8 +323,8 @@ class BackgroundConsciousness:
                 except Exception:
                     log.debug("Failed to update global budget from BG consciousness", exc_info=True)
 
-                # Budget check between rounds
-                if not self._check_budget():
+                # Budget check between rounds — halt on critical budget
+                if self._get_budget_tier() == self._BUDGET_HALTED:
                     append_jsonl(self._drive_root / "logs" / "events.jsonl", {
                         "ts": utc_now_iso(),
                         "type": "bg_budget_exceeded_mid_cycle",
