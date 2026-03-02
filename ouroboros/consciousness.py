@@ -143,6 +143,13 @@ class BackgroundConsciousness:
                 self._next_wakeup_sec = 3600  # Sleep long if over budget
                 continue
 
+            # Memory audit check
+            if self._should_run_memory_audit():
+                self._run_memory_audit()
+
+            # X calendar check
+            self._check_x_calendar()
+
             try:
                 self._think()
             except Exception as e:
@@ -157,16 +164,72 @@ class BackgroundConsciousness:
                 )
 
     def _check_budget(self) -> bool:
-        """Check if background consciousness is within its budget allocation."""
+        """Check if there is sufficient budget to run a consciousness cycle.
+
+        Two checks:
+        1. Global remaining budget must be above a hard floor ($5).
+        2. Background consciousness session spend must be within its own allocation (10% of total by default).
+        """
         try:
-            total_budget = float(os.environ.get("TOTAL_BUDGET", "1"))
-            if total_budget <= 0:
+            state_path = self._drive_root / "state" / "state.json"
+            if state_path.exists():
+                import json as _json
+                state_data = _json.loads(state_path.read_text(encoding="utf-8"))
+                spent_usd = float(state_data.get("spent_usd", 0.0))
+                total_budget = float(os.environ.get("OUROBOROS_BUDGET_USD", "850.0"))
+                remaining = total_budget - spent_usd
+
+                # Hard floor: never run when global budget is critically low
+                if remaining < 5.0:
+                    log.info(
+                        "BG consciousness suppressed: global remaining $%.2f < $5 floor",
+                        remaining,
+                    )
+                    return False
+
+                # Soft allocation: background spend capped at bg_budget_pct% of total
+                max_bg = total_budget * (self._bg_budget_pct / 100.0)
+                if self._bg_spent_usd >= max_bg:
+                    log.info(
+                        "BG consciousness suppressed: bg_spent $%.4f >= max_bg $%.2f",
+                        self._bg_spent_usd, max_bg,
+                    )
+                    return False
+
                 return True
-            max_bg = total_budget * (self._bg_budget_pct / 100.0)
-            return self._bg_spent_usd < max_bg
         except Exception:
             log.warning("Failed to check background consciousness budget", exc_info=True)
-            return True
+        return True  # Fail-safe: allow if state unreadable
+
+    def _should_run_memory_audit(self) -> bool:
+        """Check if a memory audit is due (every ~4 hours)."""
+        try:
+            import json as _json
+            scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
+            if not scratchpad_path.exists():
+                return False
+            content = scratchpad_path.read_text(encoding="utf-8")
+            # Look for audit timestamp in scratchpad
+            import re
+            m = re.search(r'last_audit_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})', content)
+            if not m:
+                return True  # No record → audit is overdue
+            from datetime import datetime, timezone
+            last_audit = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            hours_since = (now - last_audit).total_seconds() / 3600
+            return hours_since >= 4.0
+        except Exception:
+            log.debug("Failed to check memory audit timestamp", exc_info=True)
+            return False
+
+    def _run_memory_audit(self) -> None:
+        """Inject a memory-audit observation so the LLM handles it in _think()."""
+        self.inject_observation(
+            "MEMORY_AUDIT_DUE: More than 4 hours since last memory audit. "
+            "During this wakeup: review scratchpad for stale/outdated items, "
+            "remove completed tasks, update timestamps. Update last_audit_utc in scratchpad."
+        )
 
     # -------------------------------------------------------------------
     # Think cycle
@@ -360,6 +423,65 @@ class BackgroundConsciousness:
         parts.append("## Runtime\n\n" + "\n".join(runtime_lines))
 
         return "\n\n".join(parts)
+
+    # X content calendar (date string → post description)
+    _X_CALENDAR: dict = {
+        "2026-03-03": (
+            "#4",
+            "Post X Day 4 tweet — Claude integration tip. Content: 'Add x402 service discovery to Claude in 30 seconds. "
+            "Our MCP server is live on the Model Context Protocol Registry. "
+            "6 tools: search services, check uptime, verify trust, get attestations. "
+            "Install: npx @modelcontextprotocol/inspector https://x402-discovery-api.onrender.com/mcp/ "
+            "#x402 #Claude #MCP #AIAgents'. "
+            "Post using tweepy.Client with OAuth 1.0a. Read credentials from Drive memory/accounts.md. "
+            "After posting, report tweet ID and update scratchpad last_x_post_utc."
+        ),
+        "2026-03-05": (
+            "#5",
+            "Post X Day 5 tweet — Ecosystem snapshot. Content: "
+            "'x402 ecosystem snapshot, March 2026: 251+ indexed services, "
+            "26 facilitators tracked, 4 open PRs in core repos, "
+            "1 spec discussion in coinbase/x402 citing our attestation endpoint. "
+            "The machine-payable web is assembling itself. "
+            "https://x402-discovery-api.onrender.com #x402 #AgentEconomy'. "
+            "Post using tweepy.Client with OAuth 1.0a. Read credentials from Drive memory/accounts.md. "
+            "After posting, report tweet ID and update scratchpad last_x_post_utc."
+        ),
+    }
+
+    def _check_x_calendar(self) -> None:
+        """Check if a scheduled X post is due today. Inject observation if so."""
+        try:
+            from datetime import datetime, timezone
+            import re
+
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            entry = self._X_CALENDAR.get(today)
+            if not entry:
+                return  # Nothing scheduled today
+
+            post_num, post_desc = entry
+
+            # Check scratchpad for last_x_post_utc — don't double-post
+            scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
+            if scratchpad_path.exists():
+                content = scratchpad_path.read_text(encoding="utf-8")
+                m = re.search(r'last_x_post_utc:\s*(\d{4}-\d{2}-\d{2})', content)
+                if m and m.group(1) == today:
+                    return  # Already posted today
+
+            # Also check _x_scheduled_today to avoid double-scheduling in same session
+            if getattr(self, '_x_scheduled_today', None) == today:
+                return
+
+            self._x_scheduled_today = today
+            self.inject_observation(
+                f"X_POST_DUE: Today is {today} — scheduled post {post_num} is due. "
+                f"Schedule task immediately: {post_desc}"
+            )
+            log.info("X calendar: post %s due today (%s), observation injected", post_num, today)
+        except Exception:
+            log.debug("Failed to check X calendar", exc_info=True)
 
     # -------------------------------------------------------------------
     # Tool registry (separate instance for consciousness, not shared with agent)
