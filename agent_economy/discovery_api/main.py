@@ -63,6 +63,12 @@ except ImportError:
     async def fetch_chain_verifications(*args, **kwargs): return []  # type: ignore[misc]
     KNOWN_TRUST_PROVIDERS: list = []  # type: ignore[misc]
 
+try:
+    from oauth import router as oauth_router
+    _OAUTH_AVAILABLE = True
+except Exception:
+    oauth_router = None
+    _OAUTH_AVAILABLE = False
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -1852,6 +1858,9 @@ app.include_router(create_mcp_router(
     payment_required_body_fn=_payment_required_body,
     trust_fn=_trust_stub,
 ))
+
+if oauth_router is not None:
+    app.include_router(oauth_router)
 
 
 @app.get("/privacy", include_in_schema=False)
