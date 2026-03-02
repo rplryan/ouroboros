@@ -2116,40 +2116,101 @@ RADAR_SVG_256 = """<svg xmlns="http://www.w3.org/2000/svg" width="256" height="2
 
 RADAR_SVG_64 = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <defs>
-    <radialGradient id="bg64" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#010f01" stop-opacity="1"/>
+    <filter id="glow64" x="-150%" y="-150%" width="400%" height="400%">
+      <feGaussianBlur stdDeviation="1.5" result="blur1"/>
+      <feGaussianBlur stdDeviation="3" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="arcglow64" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="0.8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <radialGradient id="bgGrad64" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#010e01" stop-opacity="1"/>
+      <stop offset="60%" stop-color="#020a02" stop-opacity="1"/>
       <stop offset="100%" stop-color="#000000" stop-opacity="1"/>
     </radialGradient>
-    <radialGradient id="center64" cx="50%" cy="50%" r="50%">
+    <radialGradient id="centerGlow64" cx="50%" cy="50%" r="50%">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
-      <stop offset="12%" stop-color="#80ffaa" stop-opacity="0.9"/>
-      <stop offset="35%" stop-color="#00ff41" stop-opacity="0.5"/>
-      <stop offset="65%" stop-color="#003300" stop-opacity="0.15"/>
+      <stop offset="15%" stop-color="#80ff80" stop-opacity="0.9"/>
+      <stop offset="35%" stop-color="#00ff41" stop-opacity="0.6"/>
+      <stop offset="60%" stop-color="#004d00" stop-opacity="0.3"/>
       <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
     </radialGradient>
-    <filter id="glow64" x="-150%" y="-150%" width="400%" height="400%">
-      <feGaussianBlur stdDeviation="2" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
+    <radialGradient id="arcGlowGrad64" cx="30%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#00ff41" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
   </defs>
+
   <!-- Background -->
   <rect width="64" height="64" fill="#000000"/>
-  <circle cx="32" cy="32" r="32" fill="url(#bg64)"/>
+  <rect width="64" height="64" fill="url(#bgGrad64)"/>
+
+  <!-- Atmospheric wash (left side) -->
+  <ellipse cx="22" cy="32" rx="22" ry="22" fill="url(#arcGlowGrad64)"/>
+
   <!-- Outer rings -->
-  <circle cx="32" cy="32" r="26" fill="none" stroke="#00ff41" stroke-width="0.4" opacity="0.18"/>
-  <circle cx="32" cy="32" r="28" fill="none" stroke="#00ff41" stroke-width="0.3" opacity="0.12"/>
-  <!-- Thick arc segments -->
-  <path d="M 12.68 26.82 A 20 20 0 0 1 37.18 12.68" fill="none" stroke="#00ff41" stroke-width="2" stroke-linecap="round" opacity="0.95"/>
-  <path d="M 28.53 51.70 A 20 20 0 0 1 12.30 28.53" fill="none" stroke="#00ff41" stroke-width="2.2" stroke-linecap="round" opacity="0.9"/>
-  <path d="M 33.74 51.92 A 20 20 0 0 1 28.87 51.75" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
-  <!-- Crosshair -->
-  <line x1="0" y1="32" x2="27" y2="32" stroke="#00ff41" stroke-width="0.4" opacity="0.55"/>
-  <line x1="37" y1="32" x2="64" y2="32" stroke="#00ff41" stroke-width="0.4" opacity="0.55"/>
-  <!-- Center glow -->
-  <circle cx="32" cy="32" r="14" fill="url(#center64)"/>
-  <!-- Center dot with bloom -->
-  <circle cx="32" cy="32" r="2.5" fill="#00ff41" opacity="0.9" filter="url(#glow64)"/>
-  <circle cx="32" cy="32" r="1.8" fill="#ffffff"/>
+  <circle cx="32" cy="32" r="28.75" fill="none" stroke="#00ff41" stroke-width="0.4" stroke-opacity="0.15" stroke-dasharray="2,1"/>
+  <circle cx="32" cy="32" r="26.25" fill="none" stroke="#00ff41" stroke-width="0.3" stroke-opacity="0.12"/>
+
+  <!-- Tick marks at compass positions -->
+  <g stroke="#00ff41" stroke-opacity="0.25" stroke-width="0.5">
+    <line x1="32" y1="2" x2="32" y2="4"/>
+    <line x1="32" y1="60" x2="32" y2="62"/>
+    <line x1="2" y1="32" x2="4" y2="32"/>
+    <line x1="60" y1="32" x2="62" y2="32"/>
+  </g>
+
+  <!-- Inner echo arcs -->
+  <g stroke="#00ff41" stroke-opacity="0.2" stroke-width="0.75" fill="none" stroke-linecap="round">
+    <path d="M 17.26,21.68 A 18,18 0 0,1 35.13,14.27"/>
+    <path d="M 25.84,48.92 A 18,18 0 0,1 14.27,28.88"/>
+  </g>
+
+  <!-- MAIN thick arc segments -->
+  <g filter="url(#arcglow64)">
+    <!-- Arc A: upper-left ~10:00 to 12:30 -->
+    <path d="M 14.68,22.00 A 20,20 0 0,1 37.18,12.68" stroke="#00ff41" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-opacity="0.95"/>
+    <!-- Arc B: lower-left ~6:30 to 9:30 -->
+    <path d="M 26.82,51.32 A 20,20 0 0,1 12.68,26.82" stroke="#00ff41" stroke-width="2" fill="none" stroke-linecap="round" stroke-opacity="0.95"/>
+    <!-- Arc C: bottom ~5:30 to 6:30 -->
+    <path d="M 37.18,51.32 A 20,20 0 0,1 26.82,51.32" stroke="#00ff41" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-opacity="0.85"/>
+  </g>
+
+  <!-- Horizontal crosshair -->
+  <g stroke="#00ff41" stroke-opacity="0.55" stroke-width="0.5" fill="none">
+    <line x1="1" y1="32" x2="27" y2="32"/>
+    <line x1="37" y1="32" x2="63" y2="32"/>
+    <!-- Tick marks on crosshair -->
+    <line x1="15" y1="30" x2="15" y2="34"/>
+    <line x1="20" y1="31" x2="20" y2="33"/>
+    <line x1="24" y1="31.5" x2="24" y2="32.5"/>
+    <line x1="40" y1="31.5" x2="40" y2="32.5"/>
+    <line x1="44" y1="31" x2="44" y2="33"/>
+    <line x1="49" y1="30" x2="49" y2="34"/>
+    <!-- Vertical stubs -->
+    <line x1="32" y1="1" x2="32" y2="7"/>
+    <line x1="32" y1="57" x2="32" y2="63"/>
+    <line x1="30" y1="6" x2="34" y2="6"/>
+    <line x1="30" y1="58" x2="34" y2="58"/>
+  </g>
+
+  <!-- Center glow bloom -->
+  <circle cx="32" cy="32" r="20" fill="url(#centerGlow64)" opacity="0.35"/>
+
+  <!-- Center dot with glow -->
+  <circle cx="32" cy="32" r="2.25" fill="#00ff41" filter="url(#glow64)" opacity="0.9"/>
+  <circle cx="32" cy="32" r="1.25" fill="#ccffcc" filter="url(#glow64)"/>
+  <circle cx="32" cy="32" r="0.75" fill="#ffffff"/>
+
 </svg>"""
 
 RADAR_SVG_512 = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
