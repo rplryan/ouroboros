@@ -180,7 +180,8 @@ class BackgroundConsciousness:
                     self._run_memory_audit()
 
                 # X calendar check
-                self._check_x_calendar()
+                if self._should_run_x_calendar():
+                    self._check_x_calendar()
 
                 # GitHub monitor check
                 if self._should_run_github_monitor():
@@ -271,7 +272,7 @@ class BackgroundConsciousness:
             last_audit = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
             hours_since = (now - last_audit).total_seconds() / 3600
-            return hours_since >= 4.0
+            return hours_since >= 8.0
         except Exception:
             log.debug("Failed to check memory audit timestamp", exc_info=True)
             return False
@@ -299,7 +300,7 @@ class BackgroundConsciousness:
             last_check = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
             hours_since = (now - last_check).total_seconds() / 3600
-            return hours_since >= 6.0
+            return hours_since >= 8.0
         except Exception:
             log.debug("Failed to check GitHub monitor timestamp", exc_info=True)
             return False
@@ -334,7 +335,7 @@ class BackgroundConsciousness:
             last_check = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
             hours_since = (now - last_check).total_seconds() / 3600
-            return hours_since >= 4.0
+            return hours_since >= 8.0
         except Exception:
             log.debug("Failed to check wallet monitor timestamp", exc_info=True)
             return False
@@ -343,12 +344,12 @@ class BackgroundConsciousness:
         """Inject a wallet monitoring observation so the LLM handles it in _think()."""
         self.inject_observation(
             "WALLET_MONITOR_DUE: More than 4 hours since last BASE wallet check. "
-            "Schedule a task to check the BASE wallet 0xBceC11f20904a30fC4bAF70B85fc33b7A9294683 for: "
+            "Schedule a task to check the BASE wallet 0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA for: "
             "1) Current USDC balance on Base mainnet (chain ID 8453). "
             "2) Recent incoming transactions (last 10) — any x402 micropayments received? "
             "Use BaseScan API: https://api.basescan.org/api?module=account&action=tokentx"
             "&contractaddress=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            "&address=0xBceC11f20904a30fC4bAF70B85fc33b7A9294683&sort=desc"
+            "&address=0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA&sort=desc"
             "(USDC on Base contract: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913). "
             "Also check ETH/native balance. If any new incoming tx since last check, send_owner_message with details. "
             "Update scratchpad last_wallet_monitor_utc and last_wallet_balance after check."
@@ -572,6 +573,26 @@ class BackgroundConsciousness:
         ),
     }
 
+    def _should_run_x_calendar(self) -> bool:
+        """Check if an X calendar check is due (every ~8 hours)."""
+        try:
+            import re
+            scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
+            if not scratchpad_path.exists():
+                return True
+            content = scratchpad_path.read_text(encoding="utf-8")
+            m = re.search(r'last_x_calendar_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})', content)
+            if not m:
+                return True  # No record → check is overdue
+            from datetime import datetime, timezone
+            last_check = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            hours_since = (now - last_check).total_seconds() / 3600
+            return hours_since >= 8.0
+        except Exception:
+            log.debug("Failed to check X calendar timestamp", exc_info=True)
+            return False
+
     def _check_x_calendar(self) -> None:
         """Check if a scheduled X post is due today. Inject observation if so."""
         try:
@@ -581,7 +602,13 @@ class BackgroundConsciousness:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             entry = self._X_CALENDAR.get(today)
             if not entry:
-                return  # Nothing scheduled today
+                # Nothing scheduled today — just update the calendar check timestamp
+                self.inject_observation(
+                    "X_CALENDAR_CHECKED: No post scheduled today. "
+                    "Update scratchpad: last_x_calendar_utc: "
+                    f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M')}"
+                )
+                return
 
             post_num, post_desc = entry
 
@@ -600,7 +627,9 @@ class BackgroundConsciousness:
             self._x_scheduled_today = today
             self.inject_observation(
                 f"X_POST_DUE: Today is {today} — scheduled post {post_num} is due. "
-                f"Schedule task immediately: {post_desc}"
+                f"Schedule task immediately: {post_desc} "
+                f"After posting, also update scratchpad last_x_calendar_utc: "
+                f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M')}"
             )
             log.info("X calendar: post %s due today (%s), observation injected", post_num, today)
         except Exception:
