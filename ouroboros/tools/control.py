@@ -43,6 +43,24 @@ def _promote_to_stable(ctx: ToolContext, reason: str) -> str:
 
 
 def _schedule_task(ctx: ToolContext, description: str, context: str = "", parent_task_id: str = "") -> str:
+    # Budget gate: read state.json and check remaining budget before scheduling
+    budget_warning = ""
+    try:
+        state_path = ctx.drive_root / "state" / "state.json"
+        state_data = json.loads(state_path.read_text(encoding="utf-8"))
+        spent_usd = float(state_data.get("spent_usd", 0.0))
+        total_budget = float(os.environ.get("OUROBOROS_BUDGET_USD", "850.0"))
+        remaining = total_budget - spent_usd
+        if remaining < 5.0:
+            return (
+                f"⚠️ BUDGET_GATE: Remaining budget is ${remaining:.2f} (<$5 minimum). "
+                "Task not scheduled to protect budget. Wait for budget replenishment."
+            )
+        if remaining < 15.0:
+            budget_warning = f" ⚠️ Low budget warning: ${remaining:.2f} remaining."
+    except Exception:
+        pass  # Fail-safe: allow task to proceed if state cannot be read
+
     current_depth = getattr(ctx, 'task_depth', 0)
     new_depth = current_depth + 1 if parent_task_id else 0
     if new_depth > MAX_SUBTASK_DEPTH:
@@ -67,7 +85,7 @@ def _schedule_task(ctx: ToolContext, description: str, context: str = "", parent
     if parent_task_id:
         evt["parent_task_id"] = parent_task_id
     ctx.pending_events.append(evt)
-    return f"Scheduled task {tid}: {description}"
+    return f"Scheduled task {tid}: {description}{budget_warning}"
 
 
 def _cancel_task(ctx: ToolContext, task_id: str) -> str:
