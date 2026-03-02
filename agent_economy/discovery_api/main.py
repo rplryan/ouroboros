@@ -1984,6 +1984,74 @@ async def support_info():
     }
 
 
+@app.get("/logo.svg", include_in_schema=False)
+async def serve_logo():
+    """Serve the x402 Service Discovery SVG logo."""
+    from fastapi.responses import Response
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f0f23;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1a1a3e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#ef4444;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#a78bfa;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background square with rounded corners -->
+  <rect width="256" height="256" rx="40" ry="40" fill="url(#bg)"/>
+  <!-- Outer discovery ring -->
+  <circle cx="128" cy="128" r="90" fill="none" stroke="url(#ring)" stroke-width="4" stroke-dasharray="12 6" opacity="0.7"/>
+  <!-- Inner ring -->
+  <circle cx="128" cy="128" r="68" fill="none" stroke="#2a2a5e" stroke-width="2"/>
+  <!-- Network nodes -->
+  <circle cx="128" cy="38" r="6" fill="#f59e0b"/>
+  <circle cx="218" cy="128" r="6" fill="#f59e0b"/>
+  <circle cx="128" cy="218" r="6" fill="#f59e0b"/>
+  <circle cx="38" cy="128" r="6" fill="#f59e0b"/>
+  <!-- Node connectors (spokes) -->
+  <line x1="128" y1="44" x2="128" y2="60" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
+  <line x1="212" y1="128" x2="196" y2="128" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
+  <line x1="128" y1="212" x2="128" y2="196" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
+  <line x1="44" y1="128" x2="60" y2="128" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
+  <!-- Central "x" mark -->
+  <line x1="100" y1="100" x2="156" y2="156" stroke="url(#accent)" stroke-width="10" stroke-linecap="round"/>
+  <line x1="156" y1="100" x2="100" y2="156" stroke="url(#accent)" stroke-width="10" stroke-linecap="round"/>
+  <!-- "402" text below the x -->
+  <text x="128" y="175" font-family="'SF Mono', 'Fira Code', monospace" font-size="22" font-weight="700" fill="#f59e0b" text-anchor="middle" letter-spacing="2">402</text>
+  <!-- Small dot accent in center -->
+  <circle cx="128" cy="128" r="5" fill="white" opacity="0.9"/>
+</svg>"""
+    return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def serve_favicon():
+    """Serve favicon - returns the SVG logo (modern browsers support SVG favicons)."""
+    from fastapi.responses import Response
+    # Minimal 32x32 ICO file bytes (1-bit, single frame) with a simple encoded version
+    # We serve SVG as the favicon - modern browsers and Google's fetcher support this
+    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f0f23"/>
+      <stop offset="100%" style="stop-color:#1a1a3e"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="10" fill="url(#bg2)"/>
+  <circle cx="32" cy="32" r="22" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 2" opacity="0.8"/>
+  <line x1="20" y1="20" x2="44" y2="44" stroke="#60a5fa" stroke-width="5" stroke-linecap="round"/>
+  <line x1="44" y1="20" x2="20" y2="44" stroke="#a78bfa" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="3" fill="white"/>
+</svg>"""
+    return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
