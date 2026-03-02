@@ -338,6 +338,26 @@ def _check_budget_limits(
     task_cost = accumulated_usage.get("cost", 0)
     budget_pct = task_cost / budget_remaining_usd if budget_remaining_usd > 0 else 1.0
 
+    # Hard per-task cap: $10 max per subtask (configurable via env)
+    try:
+        per_task_cap = float(os.environ.get("OUROBOROS_PER_TASK_BUDGET_USD", "10.0"))
+    except (ValueError, TypeError):
+        per_task_cap = 10.0
+
+    if task_cost > per_task_cap:
+        finish_reason = f"Task spent ${task_cost:.3f} (exceeded per-task cap ${per_task_cap:.2f}). Stopping to protect budget."
+        messages.append({"role": "system", "content": f"[TASK_BUDGET_CAP] {finish_reason} Give your final response now."})
+        try:
+            final_msg, final_cost = _call_llm_with_retry(
+                llm, messages, active_model, None, active_effort,
+                max_retries, drive_logs, task_id, round_idx, event_queue, accumulated_usage, task_type
+            )
+            if final_msg:
+                return (final_msg.get("content") or finish_reason), accumulated_usage, llm_trace
+            return finish_reason, accumulated_usage, llm_trace
+        except Exception:
+            return finish_reason, accumulated_usage, llm_trace
+
     if budget_pct > 0.5:
         # Hard stop — protect the budget
         finish_reason = f"Task spent ${task_cost:.3f} (>50% of remaining ${budget_remaining_usd:.2f}). Budget exhausted."

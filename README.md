@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.3.3 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.3.4 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -223,6 +223,9 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v6.3.4 -- Per-Task Budget Cap & Consciousness Tightening
+- Per-task $10 budget cap in loop.py; tightened consciousness prompt (4h X monitor, removed dead email check, default wakeup 10m)
+
 ### v6.3.3 -- Session-Level Budget Monitoring
 - **`supervisor/state.py`**: Added `session_start_at` (ISO timestamp recorded at session init), `session_alerts_sent` (list of fired threshold keys), `SESSION_ALERT_THRESHOLDS_USD = [10, 20, 30, 50]` constants, `session_spend(state)` helper (current session cost), `session_rate_usd_per_hour(state)` helper (burn rate), and `check_session_budget_alerts(state, notify_fn)` function that fires Telegram alerts at each threshold with spend + burn rate info
 - **`ouroboros/context.py`**: Health Invariants section now includes session spend, burn rate, and which thresholds have been crossed — visible to the LLM on every round so it can self-regulate
@@ -283,13 +286,6 @@ Full text: [BIBLE.md](BIBLE.md)
 - Pushes `evolution.json` to webapp and patches `app.html` with new "Evolution" tab.
 - Chart.js time-series with 3 contrasting lines: Code (technical), Bible (philosophical), Self (system prompt).
 - 95 tests green. Multi-model review passed (claude-opus-4.6, o3, gemini-2.5-pro).
-
-### v5.2.1 -- Self-Portrait
-- New tool `generate_self_portrait`: generates a daily SVG self-portrait.
-- Shows: budget health ring, evolution timeline, knowledge map, metrics grid.
-- Pure-Python SVG generation, zero external dependencies (321 lines).
-- Pushed automatically to webapp `/portrait.svg`, viewable in new Portrait tab.
-- `app.html` updated with Portrait navigation tab.
 
 ### v5.2.0 -- Constitutional Hardening (Philosophy v3.2)
 - BIBLE.md upgraded to v3.2: four loopholes closed via adversarial multi-model review.
