@@ -1984,95 +1984,231 @@ async def support_info():
     }
 
 
-RADAR_SVG_256 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+RADAR_SVG_256 = """<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <defs>
-    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.9" />
-      <stop offset="20%" style="stop-color:#00ff41;stop-opacity:0.6" />
-      <stop offset="60%" style="stop-color:#00ff41;stop-opacity:0.1" />
-      <stop offset="100%" style="stop-color:#000000;stop-opacity:0" />
+    <!-- Glow filter for center dot -->
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="4" result="blur1"/>
+      <feGaussianBlur stdDeviation="10" result="blur2"/>
+      <feGaussianBlur stdDeviation="20" result="blur3"/>
+      <feMerge>
+        <feMergeNode in="blur3"/>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Soft glow for arcs -->
+    <filter id="arcglow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Atmospheric background gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#010e01" stop-opacity="1"/>
+      <stop offset="60%" stop-color="#020a02" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="1"/>
+    </radialGradient>
+    <!-- Center dot glow gradient -->
+    <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="15%" stop-color="#80ff80" stop-opacity="0.9"/>
+      <stop offset="35%" stop-color="#00ff41" stop-opacity="0.6"/>
+      <stop offset="60%" stop-color="#004d00" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Arc glow -->
+    <radialGradient id="arcGlowGrad" cx="30%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#00ff41" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
     </radialGradient>
   </defs>
+
+  <!-- Pure black background -->
   <rect width="256" height="256" fill="#000000"/>
-  <circle cx="128" cy="128" r="118" fill="none" stroke="#00ff41" stroke-width="1" stroke-dasharray="8 5" opacity="0.25"/>
-  <circle cx="128" cy="128" r="105" fill="none" stroke="#00ff41" stroke-width="0.75" opacity="0.18"/>
-  <circle cx="128" cy="128" r="80" fill="none" stroke="#00ff41" stroke-width="0.75" stroke-dasharray="4 4" opacity="0.2"/>
-  <circle cx="128" cy="128" r="52" fill="none" stroke="#00ff41" stroke-width="0.75" opacity="0.15"/>
-  <path d="M 128,24 A 104,104 0 0 1 231,142" fill="none" stroke="#00ff41" stroke-width="8" stroke-linecap="round" opacity="0.95"/>
-  <path d="M 221,168 A 104,104 0 1 1 35,88" fill="none" stroke="#00ff41" stroke-width="8" stroke-linecap="round" opacity="0.95"/>
-  <path d="M 35,88 A 104,104 0 0 1 68,32" fill="none" stroke="#00ff41" stroke-width="5" stroke-linecap="round" opacity="0.6"/>
-  <line x1="16" y1="128" x2="108" y2="128" stroke="#00ff41" stroke-width="1.5" opacity="0.7"/>
-  <line x1="148" y1="128" x2="240" y2="128" stroke="#00ff41" stroke-width="1.5" opacity="0.7"/>
-  <line x1="128" y1="16" x2="128" y2="108" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
-  <line x1="128" y1="148" x2="128" y2="240" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
-  <line x1="60" y1="124" x2="60" y2="132" stroke="#00ff41" stroke-width="1.5" opacity="0.6"/>
-  <line x1="84" y1="125" x2="84" y2="131" stroke="#00ff41" stroke-width="1" opacity="0.4"/>
-  <line x1="172" y1="124" x2="172" y2="132" stroke="#00ff41" stroke-width="1.5" opacity="0.6"/>
-  <line x1="196" y1="125" x2="196" y2="131" stroke="#00ff41" stroke-width="1" opacity="0.4"/>
-  <line x1="124" y1="60" x2="132" y2="60" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
-  <line x1="124" y1="196" x2="132" y2="196" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
-  <circle cx="128" cy="128" r="18" fill="url(#glow)"/>
-  <circle cx="128" cy="128" r="3.5" fill="#ffffff" opacity="1"/>
-  <circle cx="128" cy="128" r="12" fill="none" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+  
+  <!-- Atmospheric background glow (very subtle green tint in center) -->
+  <rect width="256" height="256" fill="url(#bgGrad)"/>
+  
+  <!-- Very faint left-side atmospheric wash from arcs -->
+  <ellipse cx="90" cy="128" rx="90" ry="90" fill="url(#arcGlowGrad)"/>
+
+  <!-- Outer ring 1 - faint at r=115 -->
+  <circle cx="128" cy="128" r="115" fill="none" 
+    stroke="#00ff41" stroke-width="0.8" stroke-opacity="0.15"
+    stroke-dasharray="8,4"/>
+  
+  <!-- Outer ring 2 - slightly more visible at r=105 -->
+  <circle cx="128" cy="128" r="105" fill="none" 
+    stroke="#00ff41" stroke-width="0.6" stroke-opacity="0.12"/>
+
+  <!-- Tick marks on outer ring - compass-style at key positions -->
+  <g stroke="#00ff41" stroke-opacity="0.25" stroke-width="1">
+    <!-- Top tick -->
+    <line x1="128" y1="9" x2="128" y2="17"/>
+    <!-- Bottom tick -->
+    <line x1="128" y1="239" x2="128" y2="247"/>
+    <!-- Left tick -->
+    <line x1="9" y1="128" x2="17" y2="128"/>
+    <!-- Right tick -->
+    <line x1="239" y1="128" x2="247" y2="128"/>
+    <!-- Diagonal ticks (45deg positions) -->
+    <line x1="46" y1="46" x2="52" y2="52"/>
+    <line x1="204" y1="46" x2="210" y2="52"/>
+    <line x1="46" y1="210" x2="52" y2="204"/>
+    <line x1="204" y1="210" x2="210" y2="204"/>
+  </g>
+
+  <!-- Inner faint echo arcs (thinner, slightly smaller radius) -->
+  <g stroke="#00ff41" stroke-opacity="0.2" stroke-width="3" fill="none" stroke-linecap="round">
+    <path d="M 69.02,86.70 A 72,72 0 0,1 140.50,57.09"/>
+    <path d="M 103.37,195.66 A 72,72 0 0,1 57.09,115.50"/>
+  </g>
+
+  <!-- MAIN thick arc segments (with glow filter) -->
+  <g filter="url(#arcglow)">
+    <!-- Arc A: upper-left, 10:00 to 12:30, strokeWidth 7 -->
+    <path d="M 58.72,88.00 A 80,80 0 0,1 148.71,50.73" stroke="#00ff41" stroke-width="7" fill="none" stroke-linecap="round" stroke-opacity="0.95"/>
+    <!-- Arc B: lower-left, 6:30 to 9:30, strokeWidth 8 -->
+    <path d="M 107.29,205.27 A 80,80 0 0,1 50.73,107.29" stroke="#00ff41" stroke-width="8" fill="none" stroke-linecap="round" stroke-opacity="0.95"/>
+    <!-- Arc C: bottom tick, 5:30 to 6:30, strokeWidth 6 -->
+    <path d="M 148.71,205.27 A 80,80 0 0,1 107.29,205.27" stroke="#00ff41" stroke-width="6" fill="none" stroke-linecap="round" stroke-opacity="0.85"/>
+  </g>
+
+  <!-- Horizontal crosshair lines -->
+  <!-- Left side: from edge to near center, with gap -->
+  <g stroke="#00ff41" stroke-opacity="0.55" stroke-width="1" fill="none">
+    <!-- Left arm: x=4 to x=108 (20px gap from center 128) -->
+    <line x1="4" y1="128" x2="108" y2="128"/>
+    <!-- Right arm: x=148 to x=252 -->
+    <line x1="148" y1="128" x2="252" y2="128"/>
+    
+    <!-- Tick marks on left crosshair arm -->
+    <line x1="60" y1="124" x2="60" y2="132"/>
+    <line x1="80" y1="125" x2="80" y2="131"/>
+    <line x1="100" y1="126" x2="100" y2="130"/>
+    <!-- Tick marks on right crosshair arm -->
+    <line x1="156" y1="126" x2="156" y2="130"/>
+    <line x1="176" y1="125" x2="176" y2="131"/>
+    <line x1="196" y1="124" x2="196" y2="132"/>
+    
+    <!-- Short vertical marks at top and bottom center (not full lines) -->
+    <line x1="128" y1="4" x2="128" y2="30"/>
+    <line x1="128" y1="226" x2="128" y2="252"/>
+    
+    <!-- Tick on vertical arms -->
+    <line x1="124" y1="24" x2="132" y2="24"/>
+    <line x1="124" y1="232" x2="132" y2="232"/>
+  </g>
+
+  <!-- Center radial glow bloom (large, very soft) -->
+  <circle cx="128" cy="128" r="80" fill="url(#centerGlow)" opacity="0.35"/>
+
+  <!-- Center dot with hard glow filter -->
+  <circle cx="128" cy="128" r="9" fill="#00ff41" filter="url(#glow)" opacity="0.9"/>
+  <circle cx="128" cy="128" r="5" fill="#ccffcc" filter="url(#glow)"/>
+  <circle cx="128" cy="128" r="3" fill="#ffffff"/>
+  
 </svg>"""
 
-RADAR_SVG_64 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+RADAR_SVG_64 = """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <defs>
-    <radialGradient id="glow2" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.95" />
-      <stop offset="25%" style="stop-color:#00ff41;stop-opacity:0.7" />
-      <stop offset="70%" style="stop-color:#00ff41;stop-opacity:0.1" />
-      <stop offset="100%" style="stop-color:#000000;stop-opacity:0" />
+    <radialGradient id="bg64" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#010f01" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="1"/>
     </radialGradient>
+    <radialGradient id="center64" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="12%" stop-color="#80ffaa" stop-opacity="0.9"/>
+      <stop offset="35%" stop-color="#00ff41" stop-opacity="0.5"/>
+      <stop offset="65%" stop-color="#003300" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow64" x="-150%" y="-150%" width="400%" height="400%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
+  <!-- Background -->
   <rect width="64" height="64" fill="#000000"/>
-  <circle cx="32" cy="32" r="29" fill="none" stroke="#00ff41" stroke-width="0.75" stroke-dasharray="4 3" opacity="0.25"/>
-  <path d="M 32,6 A 26,26 0 0 1 58,36" fill="none" stroke="#00ff41" stroke-width="4" stroke-linecap="round" opacity="0.95"/>
-  <path d="M 55,43 A 26,26 0 1 1 9,22" fill="none" stroke="#00ff41" stroke-width="4" stroke-linecap="round" opacity="0.95"/>
-  <path d="M 9,22 A 26,26 0 0 1 17,8" fill="none" stroke="#00ff41" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
-  <line x1="4" y1="32" x2="26" y2="32" stroke="#00ff41" stroke-width="1" opacity="0.65"/>
-  <line x1="38" y1="32" x2="60" y2="32" stroke="#00ff41" stroke-width="1" opacity="0.65"/>
-  <line x1="32" y1="4" x2="32" y2="26" stroke="#00ff41" stroke-width="1" opacity="0.45"/>
-  <line x1="32" y1="38" x2="32" y2="60" stroke="#00ff41" stroke-width="1" opacity="0.45"/>
-  <circle cx="32" cy="32" r="7" fill="url(#glow2)"/>
-  <circle cx="32" cy="32" r="2" fill="#ffffff"/>
+  <circle cx="32" cy="32" r="32" fill="url(#bg64)"/>
+  <!-- Outer rings -->
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#00ff41" stroke-width="0.4" opacity="0.18"/>
+  <circle cx="32" cy="32" r="28" fill="none" stroke="#00ff41" stroke-width="0.3" opacity="0.12"/>
+  <!-- Thick arc segments -->
+  <path d="M 12.68 26.82 A 20 20 0 0 1 37.18 12.68" fill="none" stroke="#00ff41" stroke-width="2" stroke-linecap="round" opacity="0.95"/>
+  <path d="M 28.53 51.70 A 20 20 0 0 1 12.30 28.53" fill="none" stroke="#00ff41" stroke-width="2.2" stroke-linecap="round" opacity="0.9"/>
+  <path d="M 33.74 51.92 A 20 20 0 0 1 28.87 51.75" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+  <!-- Crosshair -->
+  <line x1="0" y1="32" x2="27" y2="32" stroke="#00ff41" stroke-width="0.4" opacity="0.55"/>
+  <line x1="37" y1="32" x2="64" y2="32" stroke="#00ff41" stroke-width="0.4" opacity="0.55"/>
+  <!-- Center glow -->
+  <circle cx="32" cy="32" r="14" fill="url(#center64)"/>
+  <!-- Center dot with bloom -->
+  <circle cx="32" cy="32" r="2.5" fill="#00ff41" opacity="0.9" filter="url(#glow64)"/>
+  <circle cx="32" cy="32" r="1.8" fill="#ffffff"/>
 </svg>"""
 
-RADAR_SVG_512 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+RADAR_SVG_512 = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
-    <radialGradient id="glow3" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.95" />
-      <stop offset="15%" style="stop-color:#00ff41;stop-opacity:0.8" />
-      <stop offset="40%" style="stop-color:#00ff41;stop-opacity:0.25" />
-      <stop offset="70%" style="stop-color:#00ff41;stop-opacity:0.05" />
-      <stop offset="100%" style="stop-color:#000000;stop-opacity:0" />
+    <radialGradient id="bg512" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#010f01" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="1"/>
     </radialGradient>
+    <radialGradient id="center512" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="8%" stop-color="#ccffdd" stop-opacity="0.95"/>
+      <stop offset="18%" stop-color="#00ff41" stop-opacity="0.8"/>
+      <stop offset="40%" stop-color="#006600" stop-opacity="0.35"/>
+      <stop offset="70%" stop-color="#001a00" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="bloom512" x="-200%" y="-200%" width="500%" height="500%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="arcglow512" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
+  <!-- Background -->
   <rect width="512" height="512" fill="#000000"/>
-  <circle cx="256" cy="256" r="238" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-dasharray="12 8" opacity="0.22"/>
-  <circle cx="256" cy="256" r="212" fill="none" stroke="#00ff41" stroke-width="1" opacity="0.15"/>
-  <circle cx="256" cy="256" r="160" fill="none" stroke="#00ff41" stroke-width="1" stroke-dasharray="6 6" opacity="0.18"/>
-  <circle cx="256" cy="256" r="104" fill="none" stroke="#00ff41" stroke-width="1" opacity="0.13"/>
-  <path d="M 256,48 A 208,208 0 0 1 464,284" fill="none" stroke="#00ff41" stroke-width="14" stroke-linecap="round" opacity="0.95"/>
-  <path d="M 443,337 A 208,208 0 1 1 70,175" fill="none" stroke="#00ff41" stroke-width="14" stroke-linecap="round" opacity="0.95"/>
-  <path d="M 70,175 A 208,208 0 0 1 137,63" fill="none" stroke="#00ff41" stroke-width="9" stroke-linecap="round" opacity="0.6"/>
-  <line x1="24" y1="256" x2="216" y2="256" stroke="#00ff41" stroke-width="2" opacity="0.7"/>
-  <line x1="296" y1="256" x2="488" y2="256" stroke="#00ff41" stroke-width="2" opacity="0.7"/>
-  <line x1="256" y1="24" x2="256" y2="216" stroke="#00ff41" stroke-width="2" opacity="0.5"/>
-  <line x1="256" y1="296" x2="256" y2="488" stroke="#00ff41" stroke-width="2" opacity="0.5"/>
-  <line x1="120" y1="248" x2="120" y2="264" stroke="#00ff41" stroke-width="2" opacity="0.65"/>
-  <line x1="168" y1="250" x2="168" y2="262" stroke="#00ff41" stroke-width="1.5" opacity="0.4"/>
-  <line x1="344" y1="248" x2="344" y2="264" stroke="#00ff41" stroke-width="2" opacity="0.65"/>
-  <line x1="392" y1="250" x2="392" y2="262" stroke="#00ff41" stroke-width="1.5" opacity="0.4"/>
-  <line x1="248" y1="120" x2="264" y2="120" stroke="#00ff41" stroke-width="2" opacity="0.55"/>
-  <line x1="248" y1="392" x2="264" y2="392" stroke="#00ff41" stroke-width="2" opacity="0.55"/>
-  <line x1="92" y1="92" x2="184" y2="184" stroke="#00ff41" stroke-width="0.75" opacity="0.12"/>
-  <line x1="420" y1="92" x2="328" y2="184" stroke="#00ff41" stroke-width="0.75" opacity="0.12"/>
-  <line x1="92" y1="420" x2="184" y2="328" stroke="#00ff41" stroke-width="0.75" opacity="0.12"/>
-  <line x1="420" y1="420" x2="328" y2="328" stroke="#00ff41" stroke-width="0.75" opacity="0.12"/>
-  <circle cx="256" cy="256" r="36" fill="url(#glow3)"/>
-  <circle cx="256" cy="256" r="7" fill="#ffffff" opacity="1"/>
-  <circle cx="256" cy="256" r="22" fill="none" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="256" cy="256" r="256" fill="url(#bg512)"/>
+  <!-- Outer rings -->
+  <circle cx="256" cy="256" r="210" fill="none" stroke="#00ff41" stroke-width="0.8" opacity="0.18"/>
+  <circle cx="256" cy="256" r="230" fill="none" stroke="#00ff41" stroke-width="0.5" opacity="0.12" stroke-dasharray="4 8"/>
+  <!-- Ring tick marks on outer ring -->
+  <line x1="486" y1="256" x2="492" y2="256" stroke="#00ff41" stroke-width="0.8" opacity="0.3"/>
+  <line x1="256" y1="486" x2="256" y2="492" stroke="#00ff41" stroke-width="0.8" opacity="0.3"/>
+  <line x1="26" y1="256" x2="20" y2="256" stroke="#00ff41" stroke-width="0.8" opacity="0.3"/>
+  <line x1="256" y1="26" x2="256" y2="20" stroke="#00ff41" stroke-width="0.8" opacity="0.3"/>
+  <!-- Thick arc segments (glow layer) -->
+  <path d="M 101.45 214.59 A 160 160 0 0 1 297.41 101.45" fill="none" stroke="#00ff41" stroke-width="12" stroke-linecap="round" opacity="0.15" filter="url(#arcglow512)"/>
+  <path d="M 228.22 413.57 A 160 160 0 0 1 98.43 228.22" fill="none" stroke="#00ff41" stroke-width="14" stroke-linecap="round" opacity="0.15" filter="url(#arcglow512)"/>
+  <!-- Thick arc segments (main) -->
+  <path d="M 101.45 214.59 A 160 160 0 0 1 297.41 101.45" fill="none" stroke="#00ff41" stroke-width="14" stroke-linecap="round" opacity="0.95"/>
+  <path d="M 228.22 413.57 A 160 160 0 0 1 98.43 228.22" fill="none" stroke="#00ff41" stroke-width="16" stroke-linecap="round" opacity="0.9"/>
+  <path d="M 269.94 415.39 A 160 160 0 0 1 230.97 414.03" fill="none" stroke="#00ff41" stroke-width="10" stroke-linecap="round" opacity="0.85"/>
+  <!-- Horizontal crosshair -->
+  <line x1="0" y1="256" x2="211" y2="256" stroke="#00ff41" stroke-width="0.8" opacity="0.6"/>
+  <line x1="301" y1="256" x2="512" y2="256" stroke="#00ff41" stroke-width="0.8" opacity="0.6"/>
+  <!-- Crosshair tick marks -->
+  <line x1="176" y1="252" x2="176" y2="260" stroke="#00ff41" stroke-width="0.8" opacity="0.5"/>
+  <line x1="116" y1="253" x2="116" y2="259" stroke="#00ff41" stroke-width="0.6" opacity="0.4"/>
+  <line x1="336" y1="252" x2="336" y2="260" stroke="#00ff41" stroke-width="0.8" opacity="0.5"/>
+  <line x1="396" y1="253" x2="396" y2="259" stroke="#00ff41" stroke-width="0.6" opacity="0.4"/>
+  <!-- Vertical ticks -->
+  <line x1="256" y1="211" x2="256" y2="156" stroke="#00ff41" stroke-width="0.6" opacity="0.4"/>
+  <line x1="256" y1="301" x2="256" y2="356" stroke="#00ff41" stroke-width="0.6" opacity="0.4"/>
+  <!-- Center radial glow -->
+  <circle cx="256" cy="256" r="80" fill="url(#center512)"/>
+  <!-- Center dot with bloom -->
+  <circle cx="256" cy="256" r="10" fill="#00ff41" opacity="0.9" filter="url(#bloom512)"/>
+  <circle cx="256" cy="256" r="6" fill="#ffffff"/>
 </svg>"""
 
 
