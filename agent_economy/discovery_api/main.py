@@ -1903,6 +1903,67 @@ async def privacy_policy():
     return HTMLResponse(content=html)
 
 
+@app.get("/terms", include_in_schema=False)
+async def terms_of_service():
+    """Terms of Service for x402 Service Discovery API."""
+    from fastapi.responses import HTMLResponse
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terms of Service — x402 Service Discovery</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
+  h1 { color: #1a1a2e; } h2 { color: #16213e; margin-top: 2em; }
+  a { color: #0066cc; }
+</style>
+</head>
+<body>
+<h1>Terms of Service</h1>
+<p><strong>x402 Service Discovery API</strong> — <a href="https://x402-discovery-api.onrender.com">https://x402-discovery-api.onrender.com</a></p>
+<p><em>Effective date: March 1, 2026</em></p>
+
+<h2>1. Acceptance of Terms</h2>
+<p>By accessing or using the x402 Service Discovery API ("the Service"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</p>
+
+<h2>2. Description of Service</h2>
+<p>The Service provides a discovery catalog of x402-payable APIs, quality metrics, uptime monitoring, and cryptographic attestations for autonomous AI agents and developers. The Service is provided free of charge for discovery queries; individual x402-gated endpoints may have their own pricing.</p>
+
+<h2>3. Acceptable Use</h2>
+<p>You may use the Service to:</p>
+<ul>
+  <li>Discover and evaluate x402-payable API services</li>
+  <li>Integrate the MCP server into AI agent workflows</li>
+  <li>Submit your own x402-compliant services for listing</li>
+</ul>
+<p>You may not:</p>
+<ul>
+  <li>Use the Service to send spam, malware, or abusive requests</li>
+  <li>Attempt to reverse-engineer or disrupt the Service</li>
+  <li>Submit false or misleading service registrations</li>
+  <li>Circumvent rate limits or access controls</li>
+</ul>
+
+<h2>4. Service Listings</h2>
+<p>We index x402-payable services based on automated discovery and community submissions. We do not endorse, guarantee, or take responsibility for any listed third-party service. Service listings may be added, modified, or removed at any time.</p>
+
+<h2>5. No Warranty</h2>
+<p>The Service is provided "as is" without warranties of any kind. We do not guarantee uptime, accuracy of service data, or continued availability of any listed service.</p>
+
+<h2>6. Limitation of Liability</h2>
+<p>To the maximum extent permitted by law, x402 Service Discovery shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the Service or any listed service.</p>
+
+<h2>7. Modifications</h2>
+<p>We may update these Terms at any time. Continued use of the Service after changes constitutes acceptance of the updated Terms.</p>
+
+<h2>8. Contact</h2>
+<p>Questions about these Terms: <a href="mailto:x402scout@proton.me">x402scout@proton.me</a></p>
+</body>
+</html>"""
+    return HTMLResponse(content=html, status_code=200)
+
+
 @app.get("/support", include_in_schema=False)
 async def support_info():
     return {
