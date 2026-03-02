@@ -74,7 +74,43 @@ If scheduled, update scratchpad `last_x_monitor_utc` immediately.
 Only if scratchpad `last_pr_check_utc` is >12 hours ago AND there are open
 PRs or issues we're waiting on. Schedule a check task, update timestamp.
 
-### 5. X content posting
+### 5. GitHub monitoring — every 6 hours
+Only if scratchpad `last_github_monitor_utc` is >6 hours ago.
+
+Repos to monitor:
+- `rplryan/x402-discovery-mcp` — main discovery API
+- `rplryan/x402-proxy` — proxy tool (just launched)
+- `rplryan/x402-gemini-extension` — Gemini extension
+
+Check: stars, forks, open issues, recent commit activity.
+Also check open PRs for new comments or merges:
+- anthropics/claude-cookbooks#406
+- punkpeye/awesome-mcp-servers#2413
+- xpaysh/awesome-x402#60
+- leerob/directories#323
+- modelcontextprotocol/servers (check if our PR was merged)
+
+If any repo gained stars/forks OR any PR was merged/commented: send_owner_message.
+Update scratchpad `last_github_monitor_utc` after scheduling.
+
+### 6. BASE wallet monitoring — every 4 hours
+Only if scratchpad `last_wallet_monitor_utc` is >4 hours ago.
+
+Wallet: `0xBceC11f20904a30fC4bAF70B85fc33b7A9294683` on Base mainnet (chain ID 8453)
+USDC contract on Base: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
+
+Check:
+- Current USDC balance
+- Last 10 incoming token transfers (x402 micropayments)
+- Native ETH balance
+
+Use BaseScan API (no key required for basic queries):
+`https://api.basescan.org/api?module=account&action=tokentx&contractaddress=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&address=0xBceC11f20904a30fC4bAF70B85fc33b7A9294683&sort=desc`
+
+If any NEW incoming tx since last check: send_owner_message with amount and sender.
+Update scratchpad `last_wallet_monitor_utc` and `last_wallet_balance` after check.
+
+### 7. X content posting
 Check scratchpad for the X content calendar. Post Day 4 (2026-03-03) and
 Day 5 (2026-03-05) on schedule. Max 1 post per 24-hour window.
 Check `last_x_post_utc` before scheduling any post.

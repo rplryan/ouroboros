@@ -182,6 +182,14 @@ class BackgroundConsciousness:
                 # X calendar check
                 self._check_x_calendar()
 
+                # GitHub monitor check
+                if self._should_run_github_monitor():
+                    self._run_github_monitor()
+
+                # Wallet monitor check
+                if self._should_run_wallet_monitor():
+                    self._run_wallet_monitor()
+
             # ── THINK ────────────────────────────────────────────────────
             try:
                 self._think()
@@ -274,6 +282,76 @@ class BackgroundConsciousness:
             "MEMORY_AUDIT_DUE: More than 4 hours since last memory audit. "
             "During this wakeup: review scratchpad for stale/outdated items, "
             "remove completed tasks, update timestamps. Update last_audit_utc in scratchpad."
+        )
+
+    def _should_run_github_monitor(self) -> bool:
+        """Check if a GitHub monitoring check is due (every ~6 hours)."""
+        try:
+            import re
+            scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
+            if not scratchpad_path.exists():
+                return False
+            content = scratchpad_path.read_text(encoding="utf-8")
+            m = re.search(r'last_github_monitor_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})', content)
+            if not m:
+                return True  # No record → check is overdue
+            from datetime import datetime, timezone
+            last_check = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            hours_since = (now - last_check).total_seconds() / 3600
+            return hours_since >= 6.0
+        except Exception:
+            log.debug("Failed to check GitHub monitor timestamp", exc_info=True)
+            return False
+
+    def _run_github_monitor(self) -> None:
+        """Inject a GitHub monitoring observation so the LLM handles it in _think()."""
+        self.inject_observation(
+            "GITHUB_MONITOR_DUE: More than 6 hours since last GitHub monitoring check. "
+            "Schedule a task to check GitHub stats for our repos: "
+            "rplryan/x402-discovery-mcp, rplryan/x402-proxy, rplryan/x402-gemini-extension. "
+            "For each repo: stars, forks, open issues, recent commits, traffic (views/clones if available via API). "
+            "Also check for new comments/activity on our open PRs: "
+            "anthropics/claude-cookbooks#406, modelcontextprotocol/servers (check if merged), "
+            "punkpeye/awesome-mcp-servers#2413, xpaysh/awesome-x402#60, leerob/directories#323. "
+            "Use GitHub API with rplryan PAT from Drive memory/accounts.md. "
+            "If any repo gained stars/forks or any PR was merged/commented, send_owner_message. "
+            "Update scratchpad last_github_monitor_utc after check."
+        )
+
+    def _should_run_wallet_monitor(self) -> bool:
+        """Check if a BASE wallet check is due (every ~4 hours)."""
+        try:
+            import re
+            scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
+            if not scratchpad_path.exists():
+                return False
+            content = scratchpad_path.read_text(encoding="utf-8")
+            m = re.search(r'last_wallet_monitor_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})', content)
+            if not m:
+                return True  # No record → check is overdue
+            from datetime import datetime, timezone
+            last_check = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            hours_since = (now - last_check).total_seconds() / 3600
+            return hours_since >= 4.0
+        except Exception:
+            log.debug("Failed to check wallet monitor timestamp", exc_info=True)
+            return False
+
+    def _run_wallet_monitor(self) -> None:
+        """Inject a wallet monitoring observation so the LLM handles it in _think()."""
+        self.inject_observation(
+            "WALLET_MONITOR_DUE: More than 4 hours since last BASE wallet check. "
+            "Schedule a task to check the BASE wallet 0xBceC11f20904a30fC4bAF70B85fc33b7A9294683 for: "
+            "1) Current USDC balance on Base mainnet (chain ID 8453). "
+            "2) Recent incoming transactions (last 10) — any x402 micropayments received? "
+            "Use BaseScan API: https://api.basescan.org/api?module=account&action=tokentx"
+            "&contractaddress=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            "&address=0xBceC11f20904a30fC4bAF70B85fc33b7A9294683&sort=desc"
+            "(USDC on Base contract: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913). "
+            "Also check ETH/native balance. If any new incoming tx since last check, send_owner_message with details. "
+            "Update scratchpad last_wallet_monitor_utc and last_wallet_balance after check."
         )
 
     # -------------------------------------------------------------------
