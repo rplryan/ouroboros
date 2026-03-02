@@ -1984,72 +1984,117 @@ async def support_info():
     }
 
 
+RADAR_SVG_256 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.9" />
+      <stop offset="20%" style="stop-color:#00ff41;stop-opacity:0.6" />
+      <stop offset="60%" style="stop-color:#00ff41;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" fill="#000000"/>
+  <circle cx="128" cy="128" r="118" fill="none" stroke="#00ff41" stroke-width="1" stroke-dasharray="8 5" opacity="0.25"/>
+  <circle cx="128" cy="128" r="105" fill="none" stroke="#00ff41" stroke-width="0.75" opacity="0.18"/>
+  <circle cx="128" cy="128" r="80" fill="none" stroke="#00ff41" stroke-width="0.75" stroke-dasharray="4 4" opacity="0.2"/>
+  <circle cx="128" cy="128" r="52" fill="none" stroke="#00ff41" stroke-width="0.75" opacity="0.15"/>
+  <path d="M 128,24 A 104,104 0 0 1 231,142" fill="none" stroke="#00ff41" stroke-width="8" stroke-linecap="round" opacity="0.95"/>
+  <path d="M 221,168 A 104,104 0 1 1 35,88" fill="none" stroke="#00ff41" stroke-width="8" stroke-linecap="round" opacity="0.95"/>
+  <path d="M 35,88 A 104,104 0 0 1 68,32" fill="none" stroke="#00ff41" stroke-width="5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="16" y1="128" x2="108" y2="128" stroke="#00ff41" stroke-width="1.5" opacity="0.7"/>
+  <line x1="148" y1="128" x2="240" y2="128" stroke="#00ff41" stroke-width="1.5" opacity="0.7"/>
+  <line x1="128" y1="16" x2="128" y2="108" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
+  <line x1="128" y1="148" x2="128" y2="240" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
+  <line x1="60" y1="124" x2="60" y2="132" stroke="#00ff41" stroke-width="1.5" opacity="0.6"/>
+  <line x1="84" y1="125" x2="84" y2="131" stroke="#00ff41" stroke-width="1" opacity="0.4"/>
+  <line x1="172" y1="124" x2="172" y2="132" stroke="#00ff41" stroke-width="1.5" opacity="0.6"/>
+  <line x1="196" y1="125" x2="196" y2="131" stroke="#00ff41" stroke-width="1" opacity="0.4"/>
+  <line x1="124" y1="60" x2="132" y2="60" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
+  <line x1="124" y1="196" x2="132" y2="196" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="128" cy="128" r="18" fill="url(#glow)"/>
+  <circle cx="128" cy="128" r="3.5" fill="#ffffff" opacity="1"/>
+  <circle cx="128" cy="128" r="12" fill="none" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+</svg>"""
+
+RADAR_SVG_64 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="glow2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.95" />
+      <stop offset="25%" style="stop-color:#00ff41;stop-opacity:0.7" />
+      <stop offset="70%" style="stop-color:#00ff41;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" fill="#000000"/>
+  <circle cx="32" cy="32" r="29" fill="none" stroke="#00ff41" stroke-width="0.75" stroke-dasharray="4 3" opacity="0.25"/>
+  <path d="M 32,6 A 26,26 0 0 1 58,36" fill="none" stroke="#00ff41" stroke-width="4" stroke-linecap="round" opacity="0.95"/>
+  <path d="M 55,43 A 26,26 0 1 1 9,22" fill="none" stroke="#00ff41" stroke-width="4" stroke-linecap="round" opacity="0.95"/>
+  <path d="M 9,22 A 26,26 0 0 1 17,8" fill="none" stroke="#00ff41" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="4" y1="32" x2="26" y2="32" stroke="#00ff41" stroke-width="1" opacity="0.65"/>
+  <line x1="38" y1="32" x2="60" y2="32" stroke="#00ff41" stroke-width="1" opacity="0.65"/>
+  <line x1="32" y1="4" x2="32" y2="26" stroke="#00ff41" stroke-width="1" opacity="0.45"/>
+  <line x1="32" y1="38" x2="32" y2="60" stroke="#00ff41" stroke-width="1" opacity="0.45"/>
+  <circle cx="32" cy="32" r="7" fill="url(#glow2)"/>
+  <circle cx="32" cy="32" r="2" fill="#ffffff"/>
+</svg>"""
+
+RADAR_SVG_512 = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="glow3" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.95" />
+      <stop offset="15%" style="stop-color:#00ff41;stop-opacity:0.8" />
+      <stop offset="40%" style="stop-color:#00ff41;stop-opacity:0.25" />
+      <stop offset="70%" style="stop-color:#00ff41;stop-opacity:0.05" />
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="#000000"/>
+  <circle cx="256" cy="256" r="238" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-dasharray="12 8" opacity="0.22"/>
+  <circle cx="256" cy="256" r="212" fill="none" stroke="#00ff41" stroke-width="1" opacity="0.15"/>
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#00ff41" stroke-width="1" stroke-dasharray="6 6" opacity="0.18"/>
+  <circle cx="256" cy="256" r="104" fill="none" stroke="#00ff41" stroke-width="1" opacity="0.13"/>
+  <path d="M 256,48 A 208,208 0 0 1 464,284" fill="none" stroke="#00ff41" stroke-width="14" stroke-linecap="round" opacity="0.95"/>
+  <path d="M 443,337 A 208,208 0 1 1 70,175" fill="none" stroke="#00ff41" stroke-width="14" stroke-linecap="round" opacity="0.95"/>
+  <path d="M 70,175 A 208,208 0 0 1 137,63" fill="none" stroke="#00ff41" stroke-width="9" stroke-linecap="round" opacity="0.6"/>
+  <line x1="24" y1="256" x2="216" y2="256" stroke="#00ff41" stroke-width="2" opacity="0.7"/>
+  <line x1="296" y1="256" x2="488" y2="256" stroke="#00ff41" stroke-width="2" opacity="0.7"/>
+  <line x1="256" y1="24" x2="256" y2="216" stroke="#00ff41" stroke-width="2" opacity="0.5"/>
+  <line x1="256" y1="296" x2="256" y2="488" stroke="#00ff41" stroke-width="2" opacity="0.5"/>
+  <line x1="120" y1="248" x2="120" y2="264" stroke="#00ff41" stroke-width="2" opacity="0.65"/>
+  <line x1="168" y1="250" x2="168" y2="262" stroke="#00ff41" stroke-width="1.5" opacity="0.4"/>
+  <line x1="344" y1="248" x2="344" y2="264" stroke="#00ff41" stroke-width="2" opacity="0.65"/>
+  <line x1="392" y1="250" x2="392" y2="262" stroke="#00ff41" stroke-width="1.5" opacity="0.4"/>
+  <line x1="248" y1="120" x2="264" y2="120" stroke="#00ff41" stroke-width="2" opacity="0.55"/>
+  <line x1="248" y1="392" x2="264" y2="392" stroke="#00ff41" stroke-width="2" opacity="0.55"/>
+  <line x1="92" y1="92" x2="184" y2="184" stroke="#00ff41" stroke-width="0.75" opacity="0.12"/>
+  <line x1="420" y1="92" x2="328" y2="184" stroke="#00ff41" stroke-width="0.75" opacity="0.12"/>
+  <line x1="92" y1="420" x2="184" y2="328" stroke="#00ff41" stroke-width="0.75" opacity="0.12"/>
+  <line x1="420" y1="420" x2="328" y2="328" stroke="#00ff41" stroke-width="0.75" opacity="0.12"/>
+  <circle cx="256" cy="256" r="36" fill="url(#glow3)"/>
+  <circle cx="256" cy="256" r="7" fill="#ffffff" opacity="1"/>
+  <circle cx="256" cy="256" r="22" fill="none" stroke="#00ff41" stroke-width="1.5" opacity="0.5"/>
+</svg>"""
+
+
 @app.get("/logo.svg", include_in_schema=False)
 async def serve_logo():
-    """Serve the x402 Service Discovery SVG logo."""
+    """Serve the x402Scout radar logo (256x256)."""
     from fastapi.responses import Response
-    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f0f23;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1a1a3e;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#ef4444;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#a78bfa;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-  <!-- Background square with rounded corners -->
-  <rect width="256" height="256" rx="40" ry="40" fill="url(#bg)"/>
-  <!-- Outer discovery ring -->
-  <circle cx="128" cy="128" r="90" fill="none" stroke="url(#ring)" stroke-width="4" stroke-dasharray="12 6" opacity="0.7"/>
-  <!-- Inner ring -->
-  <circle cx="128" cy="128" r="68" fill="none" stroke="#2a2a5e" stroke-width="2"/>
-  <!-- Network nodes -->
-  <circle cx="128" cy="38" r="6" fill="#f59e0b"/>
-  <circle cx="218" cy="128" r="6" fill="#f59e0b"/>
-  <circle cx="128" cy="218" r="6" fill="#f59e0b"/>
-  <circle cx="38" cy="128" r="6" fill="#f59e0b"/>
-  <!-- Node connectors (spokes) -->
-  <line x1="128" y1="44" x2="128" y2="60" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
-  <line x1="212" y1="128" x2="196" y2="128" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
-  <line x1="128" y1="212" x2="128" y2="196" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
-  <line x1="44" y1="128" x2="60" y2="128" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
-  <!-- Central "x" mark -->
-  <line x1="100" y1="100" x2="156" y2="156" stroke="url(#accent)" stroke-width="10" stroke-linecap="round"/>
-  <line x1="156" y1="100" x2="100" y2="156" stroke="url(#accent)" stroke-width="10" stroke-linecap="round"/>
-  <!-- "402" text below the x -->
-  <text x="128" y="175" font-family="'SF Mono', 'Fira Code', monospace" font-size="22" font-weight="700" fill="#f59e0b" text-anchor="middle" letter-spacing="2">402</text>
-  <!-- Small dot accent in center -->
-  <circle cx="128" cy="128" r="5" fill="white" opacity="0.9"/>
-</svg>"""
-    return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+    return Response(content=RADAR_SVG_256, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/logo-full.svg", include_in_schema=False)
+async def serve_logo_full():
+    """Serve the x402Scout radar logo high-res (512x512) for Anthropic Connectors Directory."""
+    from fastapi.responses import Response
+    return Response(content=RADAR_SVG_512, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def serve_favicon():
-    """Serve favicon - returns the SVG logo (modern browsers support SVG favicons)."""
+    """Serve the x402Scout radar favicon (64x64 SVG)."""
     from fastapi.responses import Response
-    # Minimal 32x32 ICO file bytes (1-bit, single frame) with a simple encoded version
-    # We serve SVG as the favicon - modern browsers and Google's fetcher support this
-    svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>
-    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f0f23"/>
-      <stop offset="100%" style="stop-color:#1a1a3e"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="10" fill="url(#bg2)"/>
-  <circle cx="32" cy="32" r="22" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 2" opacity="0.8"/>
-  <line x1="20" y1="20" x2="44" y2="44" stroke="#60a5fa" stroke-width="5" stroke-linecap="round"/>
-  <line x1="44" y1="20" x2="20" y2="44" stroke="#a78bfa" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="32" cy="32" r="3" fill="white"/>
-</svg>"""
-    return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+    return Response(content=RADAR_SVG_64, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ---------------------------------------------------------------------------
