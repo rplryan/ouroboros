@@ -213,7 +213,7 @@ This creates a self-bootstrapping capability injection mechanism. The service re
 | Method | Path | Payment | Description |
 |---|---|---|---|
 | GET | `/.well-known/x402-discovery` | Free | Full index of all services. Never gated. Permanent and stable. |
-| GET | `/discover` | $0.005 x402 | Quality-ranked search. Supports `capability`, `max_price`, `min_quality` parameters. |
+| GET | `/discover` | $0.010 x402 | Quality-ranked search. Supports `capability`, `max_price`, `min_quality` parameters. |
 | GET | `/service/{service_id}` | $0.002 x402 | Single service lookup by service_id. |
 | GET | `/health/{service_id}` | Free | Live health check for a specific service. |
 | GET | `/browse` | Free | Ungated paginated catalog. Returns all services sorted by quality tier. |
@@ -240,7 +240,7 @@ Returns the complete service index. No payment required. This endpoint:
 
 ### 4.3 GET /discover
 
-Quality-ranked search, gated at $0.005 USDC on Base.
+Quality-ranked search, gated at $0.010 USDC on Base.
 
 **Query parameters:**
 
@@ -447,7 +447,7 @@ The reference implementation of this specification is deployed at:
 - **Source Code**: https://github.com/dorianjanezic/ouroboros/blob/ouroboros/agent_economy/discovery_api/
 - **Well-Known URL**: https://x402-discovery-api.onrender.com/.well-known/x402-discovery
 - **Free Catalog**: https://x402-discovery-api.onrender.com/catalog
-- **Paid Discovery**: https://x402-discovery-api.onrender.com/discover (requires $0.005 USDC)
+- **Paid Discovery**: https://x402-discovery-api.onrender.com/discover (requires $0.010 USDC)
 
 ### 7.2 Technical Stack
 
@@ -465,7 +465,7 @@ The reference implementation of this specification is deployed at:
 | Asset | USDC |
 | USDC Contract | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
 | Recipient Wallet | `0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA` |
-| Discovery query price | 5000 USDC units ($0.005) |
+| Discovery query price | 10000 USDC units ($0.010) |
 
 ### 7.4 Conformance Notes
 

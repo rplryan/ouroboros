@@ -11,9 +11,9 @@ The discovery API has two tiers:
 | Tier | Endpoint | Cost | Use Case |
 |---|---|---|---|
 | Free | `GET /catalog` or `GET /.well-known/x402-discovery` | Free | Browse all services, bootstrap local cache |
-| Paid | `GET /discover?q=...` | $0.005 USDC | Quality-ranked search with filters |
+| Paid | `GET /discover?q=...` | $0.010 USDC | Quality-ranked search with filters |
 
-The free catalog is the right starting point for most integrations. The paid `/discover` endpoint is worth the $0.005 when you need quality-filtered, ranked results and don't want to filter the full catalog yourself.
+The free catalog is the right starting point for most integrations. The paid `/discover` endpoint is worth the $0.010 when you need quality-filtered, ranked results and don't want to filter the full catalog yourself.
 
 ---
 
@@ -432,7 +432,7 @@ Add this discovery API as an MCP server in Claude Desktop or Cursor.
 
 After restarting, Claude/Cursor will have access to `x402_discover` and `x402_browse` tools:
 
-- `x402_discover`: Paid quality-ranked search ($0.005 USDC)
+- `x402_discover`: Paid quality-ranked search ($0.010 USDC)
 - `x402_browse`: Free catalog browser
 
 ---

@@ -47,7 +47,7 @@ print(f"{catalog['total_services']} x402 services indexed")
 |---|---|---|---|
 | `GET /.well-known/x402-discovery` | None | **Free** | Full machine-readable index (RFC 5785) |
 | `GET /catalog` | None | **Free** | Full catalog with quality signals |
-| `GET /discover?q=...&capability=...` | x402 | **$0.005** | Quality-ranked discovery |
+| `GET /discover?q=...&capability=...` | x402 | **$0.010** | Quality-ranked discovery |
 | `GET /health/{service_id}` | None | **Free** | Live health check |
 | `POST /report` | None | **Free** | Report call outcome (improves quality signals) |
 | `POST /register` | None | **Free** | Submit your x402 endpoint |
@@ -69,7 +69,7 @@ GET /discover?capability=research&max_price=0.10&min_quality=silver&q=competitor
 | `min_quality` | unverified, bronze, silver, gold | Minimum quality tier |
 | `q` | string | Free-text search |
 
-Returns HTTP 402 with payment instructions. Pay $0.005 USDC on Base, retry with proof header.
+Returns HTTP 402 with payment instructions. Pay $0.010 USDC on Base, retry with proof header.
 
 ---
 
@@ -90,7 +90,7 @@ Every listing includes:
   "output_format": "json",
   "agent_callable": true,
   "auth_required": false,
-  "llm_usage_prompt": "To use x402 Service Discovery, call https://x402-discovery-api.onrender.com/discover with x402 payment of 0.005 USDC. Send json input. Returns json.",
+  "llm_usage_prompt": "To use x402 Service Discovery, call https://x402-discovery-api.onrender.com/discover with x402 payment of 0.010 USDC. Send json input. Returns json.",
   "quality_tier": "gold",
   "uptime_pct": 99.8,
   "avg_latency_ms": 320

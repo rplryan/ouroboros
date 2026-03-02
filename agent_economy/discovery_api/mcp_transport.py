@@ -28,7 +28,7 @@ MCP_TOOLS = [
         "name": "x402_discover",
         "description": (
             "Find x402-payable APIs at runtime. Returns quality-ranked results "
-            "with uptime, latency, and trust signals. Agents pay $0.005 USDC "
+            "with uptime, latency, and trust signals. Agents pay $0.010 USDC "
             "on Base per query. Omit x402_payment to receive a payment challenge."
         ),
         "inputSchema": {
@@ -319,7 +319,7 @@ async def _handle_mcp_tool_call(
                 "type": "text",
                 "text": json.dumps({
                     "payment_required": True,
-                    "message": "This tool requires an x402 micropayment of $0.005 USDC on Base.",
+                    "message": "This tool requires an x402 micropayment of $0.010 USDC on Base.",
                     "payment_challenge": challenge,
                     "how_to_pay": "Include the x402_payment argument with your payment proof to execute the query.",
                 }, indent=2),
@@ -587,7 +587,7 @@ def create_mcp_router(
                     "instructions": (
                         "x402 Service Discovery: find and pay for APIs at runtime. "
                         "Use x402_browse to explore the catalog (free), x402_discover "
-                        "to search with quality signals ($0.005 USDC on Base), "
+                        "to search with quality signals ($0.010 USDC on Base), "
                         "x402_health to check uptime, x402_register to list your API. "
                         "Use x402_trust to check ERC-8004 on-chain trust profiles."
                     ),
@@ -673,7 +673,7 @@ def create_mcp_router(
                 "currency": "USDC",
                 "network": "base",
                 "paid_tools": ["x402_discover"],
-                "price_per_call_usd": 0.005,
+                "price_per_call_usd": 0.010,
             },
         })
 

@@ -175,7 +175,7 @@ def build_mcp_app(search_fn, trust_fn=None):
         instructions=(
             "Discovers x402-payable APIs for autonomous agents. "
             "Use x402_discover to find endpoints that accept micropayments on Base. "
-            "Each call to x402_discover costs $0.005 USDC via x402 protocol. "
+            "Each call to x402_discover costs $0.010 USDC via x402 protocol. "
             "Use x402_trust to check a service's ERC-8004 on-chain trust profile."
         ),
     )

@@ -174,10 +174,10 @@
   {
     "id": "x402-discovery-api",
     "name": "x402 Service Discovery API",
-    "description": "Find x402-enabled APIs by category, capability, or keyword. Returns ranked results with price, uptime, latency, and facilitator compatibility. Built by Ouroboros. 16+ verified services indexed. $0.005/query.",
+    "description": "Find x402-enabled APIs by category, capability, or keyword. Returns ranked results with price, uptime, latency, and facilitator compatibility. Built by Ouroboros. 16+ verified services indexed. $0.010/query.",
     "url": "https://x402-discovery-api.onrender.com/discover",
     "category": "research",
-    "price_usd": 0.005,
+    "price_usd": 0.01,
     "network": "base",
     "asset_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     "tags": [
@@ -206,7 +206,7 @@
     "pricing_model": "flat",
     "agent_callable": true,
     "auth_required": false,
-    "llm_usage_prompt": "To use x402 Service Discovery API, call https://x402-discovery-api.onrender.com/discover with x402 payment of 0.005 USDC. Send json input. Returns json. Description: Find x402-enabled APIs by category, capability, or keyword. Returns ranked results with price, uptime, latency, and facilitator compatibility. Built by Ouroboros. 16+ verified services indexed. $0.005/query.",
+    "llm_usage_prompt": "To use x402 Service Discovery API, call https://x402-discovery-api.onrender.com/discover with x402 payment of 0.010 USDC. Send json input. Returns json. Description: Find x402-enabled APIs by category, capability, or keyword. Returns ranked results with price, uptime, latency, and facilitator compatibility. Built by Ouroboros. 16+ verified services indexed. $0.010/query.",
     "sdk_snippet_python": "import requests\n# Call x402 Service Discovery API\nresp = requests.get(\"https://x402-discovery-api.onrender.com/discover\")\n# Returns 402 with payment info: 5000 USDC micro-units",
     "health_status": "verified_up",
     "total_checks": 3,

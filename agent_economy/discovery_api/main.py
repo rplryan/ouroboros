@@ -1,6 +1,6 @@
 """x402 Service Discovery API
 Agents query it to discover available services.
-Each discovery query costs $0.005 USDC on Base.
+Each discovery query costs $0.010 USDC on Base.
 
 Wallet: 0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA
 Network: Base (Ethereum L2)
@@ -79,7 +79,7 @@ WALLET_ADDRESS: str = os.getenv(
 NETWORK: str = os.getenv("NETWORK", "base")
 USDC_CONTRACT: str = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
-QUERY_PRICE_UNITS: str = os.getenv("QUERY_PRICE_USDC_UNITS", "5000")        # $0.005
+QUERY_PRICE_UNITS: str = os.getenv("QUERY_PRICE_USDC_UNITS", "10000")       # $0.010
 HEALTH_PRICE_UNITS: str = os.getenv("HEALTH_CHECK_PRICE_USDC_UNITS", "50000")  # $0.05 (reserved)
 
 FACILITATOR_URL: str = os.getenv(
@@ -856,7 +856,7 @@ app = FastAPI(
     version="3.3.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
-        "Each discovery query costs $0.005 USDC on Base."
+        "Each discovery query costs $0.010 USDC on Base."
     ),
     lifespan=_app_lifespan,
     docs_url="/docs",
@@ -916,15 +916,15 @@ async def root(request: Request) -> JSONResponse:
             "version": "3.3.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
-                "Each query costs $0.005 USDC on Base."
+                "Each query costs $0.010 USDC on Base."
             ),
             "wallet": WALLET_ADDRESS,
             "network": NETWORK,
-            "query_price_usd": 0.005,
+            "query_price_usd": 0.010,
             "quality_signals": ["uptime_pct", "avg_latency_ms", "health_status", "last_health_check"],
             "endpoints": {
                 "well_known": "GET /.well-known/x402-discovery (FREE — full catalog)",
-                "discover": "GET /discover?q={keyword}&category={category}&capability={tag}&max_price={usd}&limit={limit} (paid $0.005)",
+                "discover": "GET /discover?q={keyword}&category={category}&capability={tag}&max_price={usd}&limit={limit} (paid $0.010)",
                 "register": "POST /register (free)",
                 "report": "POST /report (free — agent outcome reporting)",
                 "health": "GET /health/{endpoint_id} (free)",
@@ -936,7 +936,7 @@ async def root(request: Request) -> JSONResponse:
     )
 
 # ---------------------------------------------------------------------------
-# GET /discover — PAID ($0.005 USDC)
+# GET /discover — PAID ($0.010 USDC)
 # ---------------------------------------------------------------------------
 
 @app.get("/discover")
@@ -1177,7 +1177,7 @@ async def well_known_x402_json():
                 "path": "/discover",
                 "method": "GET",
                 "payment_required": True,
-                "price": {"amount": "5000", "currency": "USDC", "network": "base"},
+                "price": {"amount": "10000", "currency": "USDC", "network": "base"},
                 "description": "Discover x402 services by keyword",
             },
             {
