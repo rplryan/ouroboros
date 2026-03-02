@@ -1862,6 +1862,12 @@ app.include_router(create_mcp_router(
 if oauth_router is not None:
     app.include_router(oauth_router)
 
+@app.get("/.well-known/openai-apps-challenge", include_in_schema=False)
+async def openai_domain_verification():
+    """OpenAI domain verification token."""
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse("FOQuubpFmWXwYoAM6V3-sg4bBcQCrZ172wyHAbOTq94")
+
 
 @app.get("/privacy", include_in_schema=False)
 async def privacy_policy():
