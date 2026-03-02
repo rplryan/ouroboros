@@ -2277,21 +2277,21 @@ RADAR_SVG_512 = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="5
 async def serve_logo():
     """Serve the x402Scout radar logo (256x256)."""
     from fastapi.responses import Response
-    return Response(content=RADAR_SVG_256, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+    return Response(content=RADAR_SVG_256, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=300"})
 
 
 @app.get("/logo-full.svg", include_in_schema=False)
 async def serve_logo_full():
     """Serve the x402Scout radar logo high-res (512x512) for Anthropic Connectors Directory."""
     from fastapi.responses import Response
-    return Response(content=RADAR_SVG_512, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+    return Response(content=RADAR_SVG_512, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=300"})
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def serve_favicon():
     """Serve the x402Scout radar favicon (64x64 SVG)."""
     from fastapi.responses import Response
-    return Response(content=RADAR_SVG_64, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+    return Response(content=RADAR_SVG_64, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=300"})
 
 
 # ---------------------------------------------------------------------------
