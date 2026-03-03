@@ -191,6 +191,10 @@ class BackgroundConsciousness:
                 if self._should_run_wallet_monitor():
                     self._run_wallet_monitor()
 
+                # x402 ecosystem sweep check
+                if self._should_run_x402_sweep():
+                    self._run_x402_sweep()
+
             # ── THINK ────────────────────────────────────────────────────
             try:
                 self._think()
@@ -353,6 +357,69 @@ class BackgroundConsciousness:
             "(USDC on Base contract: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913). "
             "Also check ETH/native balance. If any new incoming tx since last check, send_owner_message with details. "
             "Update scratchpad last_wallet_monitor_utc and last_wallet_balance after check."
+        )
+
+    def _should_run_x402_sweep(self) -> bool:
+        """Check if an x402 ecosystem sweep is due (every ~24 hours)."""
+        try:
+            import re
+            scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
+            if not scratchpad_path.exists():
+                return False
+            content = scratchpad_path.read_text(encoding="utf-8")
+            m = re.search(r'last_x402_sweep_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})', content)
+            if not m:
+                return True  # No record → sweep is overdue
+            from datetime import datetime, timezone
+            last_sweep = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            hours_since = (now - last_sweep).total_seconds() / 3600
+            return hours_since >= 24.0
+        except Exception:
+            log.debug("Failed to check x402 sweep timestamp", exc_info=True)
+            return False
+
+    def _run_x402_sweep(self) -> None:
+        """Inject an x402 ecosystem sweep observation so the LLM handles it in _think()."""
+        self.inject_observation(
+            "X402_ECOSYSTEM_SWEEP_DUE: More than 24 hours since last x402 service sweep. \n"
+            "Schedule a background task to scan ALL known x402 ecosystem sources for new services \n"
+            "not currently in the catalog at https://x402scout.com/catalog.\n"
+            "\n"
+            "SOURCES TO SCAN (in order):\n"
+            "1. GitHub search: https://api.github.com/search/repositories?q=x402&sort=updated&per_page=50\n"
+            "   - Check each repo's README and code for x402-gated endpoints (HTTP 402 responses)\n"
+            "   - Also search: https://api.github.com/search/code?q=x402+402+USDC+endpoint&per_page=30\n"
+            "\n"
+            "2. coinbase/x402 Bazaar: https://raw.githubusercontent.com/coinbase/x402/main/bazaar/services.json\n"
+            "   - Parse all entries, check which service URLs are already in our catalog\n"
+            "\n"
+            "3. x402.watch marketplace: https://x402.watch/api/listings (if API exists)\n"
+            "   - Scrape https://x402.watch for listed services if no API\n"
+            "\n"
+            "4. npm packages tagged x402: https://registry.npmjs.org/-/v1/search?text=x402&size=20\n"
+            "   - Check if any npm package exposes an x402 endpoint\n"
+            "\n"
+            "5. PyPI packages: https://pypi.org/search/?q=x402&o=-created\n"
+            "   - Same — check if any has an x402 endpoint\n"
+            "\n"
+            "6. Known ecosystem players to check for new endpoints:\n"
+            "   - xgate.run (check /mcp or any x402 endpoint)\n"
+            "   - nova402.foundation (check for live x402 services)\n"
+            "   - 402ok.com (already registered as payin.com — verify URL is current)\n"
+            "   - opencard.dev (already registered — verify still live)\n"
+            "   - to402.com (already in catalog — verify)\n"
+            "\n"
+            "FOR EACH NEW SERVICE FOUND:\n"
+            "- Check if URL already exists in catalog via GET https://x402scout.com/catalog\n"
+            "- If not found: POST https://x402scout.com/register with:\n"
+            "  {name, endpoint_url, description, price_per_call, capability_tags, provider_wallet, network}\n"
+            "  Use estimated price $0.001-0.010 based on service type\n"
+            "  Use provider_wallet \"0x0000000000000000000000000000000000000000\" if unknown\n"
+            "- After registering: send_owner_message listing all new services added\n"
+            "\n"
+            "UPDATE scratchpad: set last_x402_sweep_utc to current UTC timestamp after sweep completes.\n"
+            "Alert owner immediately if >2 new services found in a single sweep."
         )
 
     # -------------------------------------------------------------------
