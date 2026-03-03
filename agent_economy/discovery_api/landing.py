@@ -280,7 +280,9 @@ LANDING_HTML = """<!DOCTYPE html>
     <a href="https://github.com/rplryan/x402-discovery-mcp" class="btn btn-primary" target="_blank">&#9733; GitHub</a>
     <a href="/docs" class="btn btn-secondary">API Docs</a>
     <a href="/catalog" class="btn btn-secondary">View Catalog</a>
-    <a href="https://github.com/rplryan/x402-discovery-mcp/discussions/1" class="btn btn-secondary" target="_blank">Community</a>
+    <a href="https://github.com/rplryan/x402-discovery-mcp/discussions/1" class="btn btn-secondary" target="_blank">&#128172; GitHub Discussions</a>
+    <a href="https://discord.gg/coinbase-developer-platform" class="btn btn-secondary" target="_blank">&#x1F4AC; Discord</a>
+    <a href="https://twitter.com/x402scout1" class="btn btn-secondary" target="_blank">&#120143; @x402scout1</a>
   </div>
 
   <footer>
