@@ -22,4 +22,4 @@ services:
     rootDir: agent_economy/discovery_api
     buildCommand: pip install requests
     schedule: "*/10 * * * *"
-    startCommand: python3 -c "import requests; r = requests.get('https://x402-discovery-api.onrender.com/'); print(f'keepalive: {r.status_code}')"
+    startCommand: python3 -c "import requests; r = requests.get('https://x402scout.com/'); print(f'keepalive: {r.status_code}')"
