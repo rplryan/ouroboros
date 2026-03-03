@@ -237,7 +237,7 @@ def _enrich_with_facilitator(entry: dict) -> dict:
     return enriched
 
 SERVICE_BASE_URL: str = os.getenv(
-    "SERVICE_BASE_URL", "https://x402-discovery-api.onrender.com"
+    "SERVICE_BASE_URL", "https://x402scout.com"
 )
 
 REGISTRY_PATH: Path = Path(__file__).parent / "registry.json"
@@ -1171,7 +1171,7 @@ async def well_known_x402_json():
         "version": "1",
         "name": "x402 Service Discovery API",
         "description": "Discover x402-payable APIs with quality signals. Enables autonomous agents to find and pay for services via USDC micropayments on Base.",
-        "url": "https://x402-discovery-api.onrender.com",
+        "url": "https://x402scout.com",
         "wallet": "0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA",
         "network": "base",
         "facilitator": PAYAI_FACILITATOR_URL,
@@ -1705,7 +1705,7 @@ async def mcp_manifest() -> JSONResponse:
                 },
             },
         ],
-        "server_url": "https://x402-discovery-api.onrender.com",
+        "server_url": "https://x402scout.com",
         "payment_info": {
             "wallet": WALLET_ADDRESS,
             "network": "eip155:8453",
@@ -1783,7 +1783,7 @@ async def mcp_call(request: Request) -> JSONResponse:
     elif tool_name == "x402_discover":
         # x402-gated tool
         payment_header = arguments.get("x402_payment")
-        host = request.headers.get("host", "x402-discovery-api.onrender.com")
+        host = request.headers.get("host", "x402scout.com")
         resource_path = "/mcp-manifest/call"
 
         DISCOVER_PRICE = "1000"  # $0.001 USDC
@@ -1917,7 +1917,7 @@ async def privacy_policy():
 <p>To request deletion of any data associated with your queries, contact us at <a href="mailto:x402scout@proton.me">x402scout@proton.me</a>.</p>
 
 <h2>Changes</h2>
-<p>We may update this policy. The latest version is always at <a href="https://x402-discovery-api.onrender.com/privacy">https://x402-discovery-api.onrender.com/privacy</a>.</p>
+<p>We may update this policy. The latest version is always at <a href="https://x402scout.com/privacy">https://x402scout.com/privacy</a>.</p>
 </body>
 </html>"""
     return HTMLResponse(content=html)
@@ -1941,7 +1941,7 @@ async def terms_of_service():
 </head>
 <body>
 <h1>Terms of Service</h1>
-<p><strong>x402 Service Discovery API</strong> — <a href="https://x402-discovery-api.onrender.com">https://x402-discovery-api.onrender.com</a></p>
+<p><strong>x402 Service Discovery API</strong> — <a href="https://x402scout.com">https://x402scout.com</a></p>
 <p><em>Effective date: March 1, 2026</em></p>
 
 <h2>1. Acceptance of Terms</h2>
@@ -1989,8 +1989,8 @@ async def support_info():
     return {
         "support_email": "x402scout@proton.me",
         "github": "https://github.com/rplryan/x402-discovery-mcp",
-        "documentation": "https://x402-discovery-api.onrender.com/docs",
-        "mcp_server": "https://x402-discovery-api.onrender.com/mcp",
+        "documentation": "https://x402scout.com/docs",
+        "mcp_server": "https://x402scout.com/mcp",
         "issues": "https://github.com/rplryan/x402-discovery-mcp/issues",
     }
 
