@@ -26,7 +26,7 @@ from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
