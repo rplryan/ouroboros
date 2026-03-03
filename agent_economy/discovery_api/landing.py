@@ -56,7 +56,7 @@ LANDING_HTML = """<!DOCTYPE html>
     gap: 18px;
     margin-bottom: 48px;
   }
-  .logo-wrap svg { width: 56px; height: 56px; }
+  .logo-wrap img { width: 56px; height: 56px; }
   .brand h1 {
     font-size: 1.9rem;
     color: var(--green);
@@ -211,19 +211,7 @@ LANDING_HTML = """<!DOCTYPE html>
 <div class="container">
   <header>
     <div class="logo-wrap">
-      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" fill="none">
-        <circle cx="32" cy="32" r="30" stroke="#00ff88" stroke-width="1.2" opacity="0.25"/>
-        <circle cx="32" cy="32" r="22" stroke="#00ff88" stroke-width="1" opacity="0.35"/>
-        <circle cx="32" cy="32" r="14" stroke="#00ff88" stroke-width="1" opacity="0.5"/>
-        <circle cx="32" cy="32" r="6" stroke="#00ff88" stroke-width="1.2" opacity="0.7"/>
-        <line x1="32" y1="2" x2="32" y2="62" stroke="#00ff88" stroke-width="0.8" opacity="0.2"/>
-        <line x1="2" y1="32" x2="62" y2="32" stroke="#00ff88" stroke-width="0.8" opacity="0.2"/>
-        <circle cx="32" cy="32" r="2.5" fill="#00ff88"/>
-        <path d="M32 32 L54 20" stroke="#00ff88" stroke-width="1.5" opacity="0.9" stroke-linecap="round"/>
-        <circle cx="44" cy="16" r="2.5" fill="#00ff88" opacity="0.6"/>
-        <circle cx="18" cy="44" r="1.8" fill="#00ff88" opacity="0.4"/>
-        <circle cx="50" cy="46" r="1.4" fill="#00ff88" opacity="0.3"/>
-      </svg>
+      <img src="/logo.png" alt="x402Scout logo" width="56" height="56" style="border-radius:50%"/>
     </div>
     <div class="brand">
       <h1>x402Scout</h1>
