@@ -326,7 +326,12 @@ def _check_budget_limits(
     task_type: str = "task",
 ) -> Optional[Tuple[str, Dict[str, Any], Dict[str, Any]]]:
     """
-    Check budget limits and handle budget overrun.
+    Check budget limits and inject cost warnings.
+
+    - Hard stop when task_cost > 50% of remaining budget (real safety net).
+    - Soft nudge every 10 rounds when task_cost > 30% of remaining budget.
+    - One-time [COST INFO/WARNING] messages at $10, $20, $30 per task so the
+      LLM can self-regulate without being forcibly aborted mid-execution.
 
     Returns:
         None if budget is OK (continue loop)
@@ -338,25 +343,14 @@ def _check_budget_limits(
     task_cost = accumulated_usage.get("cost", 0)
     budget_pct = task_cost / budget_remaining_usd if budget_remaining_usd > 0 else 1.0
 
-    # Hard per-task cap: $10 max per subtask (configurable via env)
-    try:
-        per_task_cap = float(os.environ.get("OUROBOROS_PER_TASK_BUDGET_USD", "10.0"))
-    except (ValueError, TypeError):
-        per_task_cap = 10.0
-
-    if task_cost > per_task_cap:
-        finish_reason = f"Task spent ${task_cost:.3f} (exceeded per-task cap ${per_task_cap:.2f}). Stopping to protect budget."
-        messages.append({"role": "system", "content": f"[TASK_BUDGET_CAP] {finish_reason} Give your final response now."})
-        try:
-            final_msg, final_cost = _call_llm_with_retry(
-                llm, messages, active_model, None, active_effort,
-                max_retries, drive_logs, task_id, round_idx, event_queue, accumulated_usage, task_type
-            )
-            if final_msg:
-                return (final_msg.get("content") or finish_reason), accumulated_usage, llm_trace
-            return finish_reason, accumulated_usage, llm_trace
-        except Exception:
-            return finish_reason, accumulated_usage, llm_trace
+    # One-time cost warnings — fire once when task_cost first crosses each threshold.
+    # Using a narrow window (threshold to threshold+0.50) avoids re-firing each round.
+    if 10.0 <= task_cost < 10.50:
+        messages.append({"role": "system", "content": f"[COST INFO] This task has spent ${task_cost:.2f} so far. Continue if needed, but wrap up when the goal is achieved."})
+    elif 20.0 <= task_cost < 20.50:
+        messages.append({"role": "system", "content": f"[COST INFO] This task has spent ${task_cost:.2f} — significant cost. Please complete the current step and give a final response."})
+    elif 30.0 <= task_cost < 30.50:
+        messages.append({"role": "system", "content": f"[COST WARNING] Task cost ${task_cost:.2f} is very high. Finish now unless absolutely necessary to continue."})
 
     if budget_pct > 0.5:
         # Hard stop — protect the budget
