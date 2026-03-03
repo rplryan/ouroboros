@@ -7,7 +7,7 @@ Network: Base (Ethereum L2)
 Asset: USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
 """
 
-from __future__ import annotations
+# from __future__ import annotations  # removed: causes FastAPI OpenAPI schema generation failure
 
 import asyncio
 import contextlib
