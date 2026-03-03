@@ -1522,7 +1522,7 @@ async def jwks_endpoint() -> JSONResponse:
 
     Example verification (Python):
         import jwt, httpx
-        jwks = httpx.get("https://x402-discovery-api.onrender.com/jwks").json()
+        jwks = httpx.get("https://x402scout.com/jwks").json()
         pub_key = jwks["keys"][0]["x"]  # base64url Ed25519 public key
         payload = jwt.decode(token, algorithms=["EdDSA"], options={"verify_signature": False})
     """
