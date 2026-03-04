@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.3.4 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.3.5 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,12 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.3.5 -- Hardcoded Startup Recurring Task Scheduler
+- **`colab_launcher.py`**: Added `_schedule_overdue_recurring_tasks()` — runs at every startup, checks scratchpad timestamps, and directly enqueues any overdue daily tasks (x402 ecosystem sweep, GitHub + PR monitor, social listening) if they haven't run in the last 8h
+- **Resilient scheduling**: Bypasses background consciousness entirely — sweeps now run even if consciousness was offline, crashed, or not started
+- **Budget gate**: Skips scheduling if remaining budget < $15
+- **Multi-format timestamp detection**: Checks both explicit `last_x402_sweep_utc:` keys and the background consciousness schedule table format
 
 ### v6.3.4 -- Per-Task Budget Cap & Consciousness Tightening
 - Per-task $10 budget cap in loop.py; tightened consciousness prompt (4h X monitor, removed dead email check, default wakeup 10m)

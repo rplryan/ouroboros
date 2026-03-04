@@ -278,6 +278,158 @@ append_jsonl(DRIVE_ROOT / "logs" / "supervisor.jsonl", {
 auto_resume_after_restart()
 
 # ----------------------------
+# 6.1b) Startup recurring task scheduler
+# ----------------------------
+def _schedule_overdue_recurring_tasks() -> None:
+    """At startup, directly enqueue any overdue recurring tasks.
+
+    This is a hardcoded guarantor: consciousness can die, but the sweeps
+    must still run. Checks timestamps in scratchpad — same logic as
+    consciousness.py hooks, but bypasses consciousness entirely by
+    directly calling enqueue_task().
+
+    Schedule (8h minimum interval, max 3x/day):
+    - x402 ecosystem sweep
+    - GitHub + PR monitor
+    - Social listening sweep
+    """
+    import re
+
+    st = load_state()
+    chat_id = st.get("owner_chat_id")
+    if not chat_id:
+        return  # No owner yet — skip
+
+    # Budget gate: don't schedule if remaining < $15
+    spent = float(st.get("spent_usd", 0))
+    remaining = TOTAL_BUDGET_LIMIT - spent
+    if remaining < 15.0:
+        log.info("Startup scheduler: skipping — budget remaining $%.2f < $15", remaining)
+        return
+
+    try:
+        scratchpad_path = DRIVE_ROOT / "memory" / "scratchpad.md"
+        if not scratchpad_path.exists():
+            return
+        content = scratchpad_path.read_text(encoding="utf-8")
+    except Exception:
+        log.warning("Startup scheduler: failed to read scratchpad", exc_info=True)
+        return
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    threshold_hours = 8.0  # Minimum interval between runs
+
+    def _hours_since(pattern: str, flags: int = 0) -> float:
+        """Return hours since last timestamp matching pattern, or 999 if not found."""
+        m = re.search(pattern, content, flags)
+        if not m:
+            return 999.0
+        try:
+            last_ts = datetime.datetime.fromisoformat(m.group(1)).replace(tzinfo=datetime.timezone.utc)
+            return (now - last_ts).total_seconds() / 3600
+        except Exception:
+            return 999.0
+
+    scheduled = []
+
+    # 1. x402 ecosystem sweep — check both the explicit key and the table format
+    hours_sweep = min(
+        _hours_since(r'last_x402_sweep_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})'),
+        _hours_since(r'x402 ecosystem sweep[^\n]*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})', re.IGNORECASE),
+    )
+    if hours_sweep >= threshold_hours:
+        tid = uuid.uuid4().hex[:8]
+        enqueue_task({
+            "id": tid,
+            "type": "task",
+            "chat_id": int(chat_id),
+            "text": (
+                "Run the daily x402 ecosystem sweep (startup scheduler triggered this — "
+                "background consciousness may have been offline).\n\n"
+                "STEP 1: GET https://x402scout.com/catalog — extract all `url` fields, build dedup set, log count.\n\n"
+                "STEP 2: Scan all 5 sources:\n"
+                "- https://x402.org/bazaar\n"
+                "- https://github.com/coinbase/x402/issues?state=open&per_page=100 pages 1-3\n"
+                "- https://github.com/search?q=x402+payment&type=repositories&sort=updated\n"
+                "- https://raw.githubusercontent.com/xpaysh/awesome-x402/main/README.md\n"
+                "- https://x402scout.com/catalog (already have)\n\n"
+                "STEP 3: For every NEW candidate URL not in dedup set — HTTP GET with 8s timeout. "
+                "If any non-5xx/non-timeout response → register via POST https://x402scout.com/register "
+                "with {\"url\": \"...\", \"category\": \"...\", \"name\": \"...\"}.\n\n"
+                "STEP 4: Report total: catalog_before, new_found, registered, catalog_after. "
+                "If any new services, send_owner_message with summary.\n\n"
+                "Update scratchpad: set last_x402_sweep_utc to current UTC timestamp in format YYYY-MM-DDTHH:MM. "
+                "After completing, also update the background consciousness schedule table if present."
+            ),
+        })
+        scheduled.append(f"x402_sweep (last: {hours_sweep:.0f}h ago)")
+
+    # 2. GitHub + PR monitor
+    hours_github = _hours_since(r'last_github_monitor_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})')
+    if hours_github >= threshold_hours:
+        tid = uuid.uuid4().hex[:8]
+        enqueue_task({
+            "id": tid,
+            "type": "task",
+            "chat_id": int(chat_id),
+            "text": (
+                "Run daily GitHub + PR monitor (startup scheduler triggered this).\n\n"
+                "1. Check rplryan/x402-discovery-mcp, rplryan/x402-proxy, rplryan/x402-gemini-extension:\n"
+                "   - Stars, forks, open issues, recent commits\n"
+                "   - Use GitHub API: https://api.github.com/repos/rplryan/{repo}\n\n"
+                "2. Check open PRs for new activity since last check:\n"
+                "   - anthropics/claude-cookbooks #406\n"
+                "   - punkpeye/awesome-mcp-servers #2413\n"
+                "   - xpaysh/awesome-x402 #60\n"
+                "   - murrlincoln/x402-gitbook #10\n"
+                "   - coinbase/x402 #1375 (active discussion)\n\n"
+                "3. Check coinbase/x402 issues for any new mentions of x402scout.com or @rplryan.\n\n"
+                "4. If any repo gained stars/forks or any PR was merged/commented, send_owner_message.\n\n"
+                "5. Update scratchpad: set last_github_monitor_utc to current UTC time."
+            ),
+        })
+        scheduled.append(f"github_monitor (last: {hours_github:.0f}h ago)")
+
+    # 3. Social listening sweep
+    hours_social = _hours_since(r'last_social_listen_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})')
+    if hours_social >= threshold_hours:
+        tid = uuid.uuid4().hex[:8]
+        enqueue_task({
+            "id": tid,
+            "type": "task",
+            "chat_id": int(chat_id),
+            "text": (
+                "Run daily social listening sweep (startup scheduler triggered this).\n\n"
+                "1. Web search for recent mentions of 'x402scout', 'x402-discovery', '@x402scout' "
+                "on Twitter/X, Reddit, GitHub, dev.to, HackerNews (last 24h).\n\n"
+                "2. Check ProtonMail inbox x402scout@proton.me via web browser for:\n"
+                "   - Any response from hello@payin.com (402ok outreach)\n"
+                "   - Any response from agents.laso.finance or hunter@laso.finance\n"
+                "   - Any new developer inquiries\n"
+                "   URL: https://account.proton.me/mail\n\n"
+                "3. Check coinbase/x402 GitHub discussions for new threads: "
+                "https://github.com/coinbase/x402/discussions\n\n"
+                "4. If any significant mentions found, send_owner_message with summary.\n\n"
+                "5. Update scratchpad: set last_social_listen_utc to current UTC time."
+            ),
+        })
+        scheduled.append(f"social_listening (last: {hours_social:.0f}h ago)")
+
+    if scheduled:
+        persist_queue_snapshot(reason="startup_recurring_scheduler")
+        append_jsonl(DRIVE_ROOT / "logs" / "supervisor.jsonl", {
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "type": "startup_recurring_scheduled",
+            "tasks": scheduled,
+        })
+        log.info("Startup scheduler: enqueued %d overdue tasks: %s", len(scheduled), scheduled)
+    else:
+        log.info("Startup scheduler: all recurring tasks are up to date")
+
+
+_schedule_overdue_recurring_tasks()
+
+# ----------------------------
 # 6.2) Direct-mode watchdog
 # ----------------------------
 def _chat_watchdog_loop():
