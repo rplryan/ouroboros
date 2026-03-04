@@ -342,6 +342,51 @@ def _compute_health_status(stats: dict, last_check: dict | None) -> str:
     return "unverified"
 
 
+def _compute_trust_score_from_fields(entry: dict, stats: dict) -> int:
+    """Compute 0-100 Trust Score from enriched entry + health stats.
+
+    Scoring:
+      Uptime (40): uptime_pct/100 * 40
+      Latency (20): <200ms=20, <500ms=15, <1000ms=10, else=5, None=10
+      Verification (20): checks>=10=20, >=3=10, >=1=5, 0=0
+      Facilitator (10): compatible=10
+      Source (10): first-party=10, manual=8, ecosystem=6, else=4
+    """
+    score = 0
+    uptime = stats.get("uptime_pct")
+    score += round(uptime / 100.0 * 40) if uptime is not None else 0
+    avg_lat = stats.get("avg_latency_ms")
+    if avg_lat is None:
+        score += 10
+    elif avg_lat < 200:
+        score += 20
+    elif avg_lat < 500:
+        score += 15
+    elif avg_lat < 1000:
+        score += 10
+    else:
+        score += 5
+    total_checks = stats.get("total_checks", 0)
+    if total_checks >= 10:
+        score += 20
+    elif total_checks >= 3:
+        score += 10
+    elif total_checks >= 1:
+        score += 5
+    if entry.get("facilitator_compatible", False):
+        score += 10
+    source = entry.get("source", "")
+    if source == "first-party":
+        score += 10
+    elif source == "manual":
+        score += 8
+    elif source == "ecosystem":
+        score += 6
+    else:
+        score += 4
+    return min(100, max(0, score))
+
+
 def _enrich_with_quality(entry: dict) -> dict:
     url = entry.get("url", "")
     stats = _get_health_stats(url)
@@ -353,6 +398,8 @@ def _enrich_with_quality(entry: dict) -> dict:
     enriched["successful_checks"] = stats["successful_checks"]
     enriched["last_health_check"] = last["checked_at"] if last else None
     enriched["health_status"] = _compute_health_status(stats, last)
+    # Trust Score — composite 0-100 signal (uptime + latency + verification + facilitator + source)
+    enriched["trust_score"] = _compute_trust_score_from_fields(enriched, stats)
     # Add facilitator compatibility (synchronous — uses precomputed index)
     enriched = _enrich_with_facilitator(enriched)
     return enriched
@@ -394,6 +441,8 @@ async def _background_health_checker() -> None:
                 reg_entry["avg_latency_ms"] = stats["avg_latency_ms"]
                 reg_entry["last_health_check"] = last["checked_at"] if last else None
                 reg_entry["health_status"] = _compute_health_status(stats, last)
+                stats_for_ts = _get_health_stats(reg_entry.get("url", ""))
+                reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, stats_for_ts)
         _save_registry(_registry)
         log.info("Background health check complete")
 
@@ -663,20 +712,21 @@ def _search(
         keywords = q.lower().split()
         scored = [(e, _score_entry(e, keywords)) for e in results]
         scored = [(e, s) for e, s in scored if s > 0]
-        scored.sort(key=lambda x: (x[1], x[0].get("query_count", 0)), reverse=True)
+        scored.sort(key=lambda x: (x[1], x[0].get("trust_score", 0), x[0].get("query_count", 0)), reverse=True)
         results = [e for e, _ in scored]
     else:
-        results.sort(key=lambda e: e.get("query_count", 0), reverse=True)
+        results.sort(key=lambda e: (e.get("trust_score", 0), e.get("uptime_pct", 0), e.get("query_count", 0)), reverse=True)
 
     # Enrich with quality signals from SQLite
     enriched = [_enrich_with_quality(e) for e in results[:limit * 2]]
 
-    # Re-sort by quality: uptime desc, latency asc, registered_at desc
+    # Re-sort by quality: trust_score desc, uptime desc, latency asc, registered_at desc
     def quality_sort_key(e: dict):
+        trust = e.get("trust_score") or 0.0
         uptime = e.get("uptime_pct") or 0.0
         latency = e.get("avg_latency_ms") or 9999
         registered = e.get("registered_at", "")
-        return (-uptime, latency, [-ord(c) for c in registered[:10]])
+        return (-trust, -uptime, latency, [-ord(c) for c in registered[:10]])
 
     enriched.sort(key=quality_sort_key)
     return enriched[:limit]
@@ -853,7 +903,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.3.0",
+    version="3.4.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.010 USDC on Base."
@@ -918,7 +968,7 @@ async def root(request: Request):
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.3.0",
+            "version": "3.4.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.010 USDC on Base."
@@ -1116,6 +1166,7 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
 @app.get("/catalog")
 async def catalog() -> JSONResponse:
     enriched = [_enrich_with_quality(e) for e in _registry]
+    enriched.sort(key=lambda x: (x.get("trust_score", 0), x.get("uptime_pct", 0), x.get("query_count", 0)), reverse=True)
     return JSONResponse({
         "endpoints": enriched,
         "count": len(enriched),
@@ -1234,6 +1285,97 @@ async def facilitator_check(
     })
 
 
+@app.get("/scan")
+async def scan_endpoint(url: str) -> dict:
+    """Scan a URL for x402 protocol compliance. Free — no payment required."""
+    import httpx as _httpx
+    import json as _json
+
+    signals = []
+    issues = []
+    score = 0
+
+    try:
+        async with _httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"Accept": "application/json"})
+
+            if resp.status_code == 402:
+                signals.append("✅ Returns HTTP 402 Payment Required")
+                score += 30
+            elif resp.status_code in (200, 401, 403):
+                issues.append(f"⚠️ Returns {resp.status_code}, not 402 — may require x402 header to trigger payment flow")
+                score += 5
+            else:
+                issues.append(f"❌ Returns {resp.status_code} — unexpected response")
+
+            body = {}
+            try:
+                body = resp.json()
+            except Exception:
+                issues.append("⚠️ Response body is not valid JSON")
+
+            if body.get("x402Version"):
+                signals.append(f"✅ x402Version: {body['x402Version']}")
+                score += 20
+            else:
+                issues.append("❌ Missing x402Version field in response body")
+
+            accepts = body.get("accepts", [])
+            if accepts and isinstance(accepts, list) and len(accepts) > 0:
+                first = accepts[0]
+                if first.get("scheme") and first.get("network") and first.get("maxAmountRequired"):
+                    signals.append(f"✅ Valid accepts array — scheme={first.get('scheme')}, network={first.get('network')}, amount={first.get('maxAmountRequired')}")
+                    score += 20
+                else:
+                    issues.append("⚠️ accepts array present but malformed")
+                    score += 5
+            else:
+                issues.append("❌ Missing or empty accepts array")
+
+            usdc_base = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            body_str = _json.dumps(body).lower()
+            if usdc_base.lower() in body_str:
+                signals.append("✅ USDC on Base contract address found")
+                score += 15
+            elif "base" in body_str and ("usdc" in body_str or "erc" in body_str):
+                signals.append("✅ Base network USDC referenced")
+                score += 10
+            else:
+                issues.append("⚠️ No USDC/Base contract address detected")
+
+            if "transferWithAuthorization" in _json.dumps(body) or "eip3009" in body_str or "eip-3009" in body_str:
+                signals.append("✅ EIP-3009 transferWithAuthorization referenced")
+                score += 15
+            elif resp.status_code == 402:
+                signals.append("ℹ️ EIP-3009 assumed (standard x402 flow)")
+                score += 8
+            else:
+                issues.append("⚠️ Could not confirm EIP-3009 compliance")
+
+    except _httpx.TimeoutException:
+        return {"url": url, "compliance_score": 0, "grade": "F — Unreachable", "signals": [], "issues": ["❌ Connection timed out (10s)"], "recommendation": "Service is unreachable."}
+    except Exception as e:
+        return {"url": url, "compliance_score": 0, "grade": "F — Error", "signals": [], "issues": [f"❌ Error: {e}"], "recommendation": "Could not connect."}
+
+    if score >= 80:
+        grade = "A — Fully x402 Compliant"
+        recommendation = "Safe to use with autonomous agents."
+    elif score >= 60:
+        grade = "B — Mostly Compliant"
+        recommendation = "Review issues for full compliance."
+    elif score >= 40:
+        grade = "C — Partial Compliance"
+        recommendation = "Use with caution."
+    elif score >= 20:
+        grade = "D — Minimal Compliance"
+        recommendation = "Not recommended for autonomous payments."
+    else:
+        grade = "F — Not x402 Compliant"
+        recommendation = "Do not attempt autonomous payments."
+
+    return {"url": url, "compliance_score": score, "grade": grade, "signals": signals, "issues": issues, "recommendation": recommendation}
+
+
 @app.get("/v1/trust-providers")
 async def list_trust_providers():
     """
@@ -1255,7 +1397,7 @@ _SERVER_CARD_DATA = {
     "serverInfo": {
         "name": "x402-discovery-mcp",
         "displayName": "x402 Service Discovery",
-        "version": "3.3.0",
+        "version": "3.4.0",
         "description": "The index for the x402 agent economy. Discover, route, and verify 251+ live x402-payable services across Base mainnet. Quality signals, health monitoring, trust attestations, and payment facilitator compatibility — everything an AI agent needs to pay its way through the web.",
         "homepage": "https://github.com/rplryan/x402-discovery-mcp",
         "icon": "https://raw.githubusercontent.com/rplryan/x402-discovery-mcp/main/icon.png"

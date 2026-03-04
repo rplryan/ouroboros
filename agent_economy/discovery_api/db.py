@@ -105,6 +105,114 @@ def _compute_health_status(stats: dict, last_check: dict | None) -> str:
     return "unverified"
 
 
+def compute_trust_score(ep: dict) -> int:
+    """
+    Composite Trust Score (0-100) from existing quality signals.
+    Components:
+      - Uptime score (0-40): uptime_pct * 0.4
+      - Latency score (0-20): 20 if avg_latency_ms < 300, 10 if < 800, 5 if < 2000, 0 otherwise
+      - Check depth (0-15): min(total_checks / 100, 1) * 15
+      - Agent callable (0-10): 10 if agent_callable else 0
+      - Facilitator compatible (0-10): 10 if facilitator_compatible else 0
+      - Attestation bonus (0-5): 5 if has valid attestation data
+    """
+    score = 0.0
+
+    # Uptime (0-40)
+    uptime = ep.get("uptime_pct") or 0.0
+    score += float(uptime) * 0.40
+
+    # Latency (0-20)
+    latency = ep.get("avg_latency_ms")
+    if latency is not None:
+        if latency < 300:
+            score += 20
+        elif latency < 800:
+            score += 10
+        elif latency < 2000:
+            score += 5
+
+    # Check depth (0-15) — more checks = more reliable score
+    checks = ep.get("total_checks") or 0
+    score += min(checks / 100.0, 1.0) * 15
+
+    # Agent callable (0-10)
+    if ep.get("agent_callable"):
+        score += 10
+
+    # Facilitator compatible (0-10)
+    if ep.get("facilitator_compatible"):
+        score += 10
+
+    # Attestation bonus (0-5): if attested/verified
+    if ep.get("attested") or ep.get("source") in ("manual", "verified"):
+        score += 5
+
+    return min(100, int(round(score)))
+
+
+def _compute_trust_score(entry: dict, stats: dict, last_check: dict | None) -> int:
+    """
+    Compute a 0-100 Trust Score from available quality signals.
+
+    Scoring breakdown:
+      - Uptime (40 pts):       uptime_pct / 100 * 40
+      - Latency (20 pts):      <200ms=20, <500ms=15, <1000ms=10, else=5, None=10
+      - Verification (20 pts): total_checks>=10=20, >=3=10, >=1=5, 0=0
+      - Facilitator (10 pts):  facilitator_compatible=10, else=0
+      - Source (10 pts):       first-party=10, manual=8, ecosystem=6, else=4
+    """
+    score = 0
+
+    # Uptime component (40 pts)
+    uptime = stats.get("uptime_pct")
+    if uptime is not None:
+        score += round(uptime / 100.0 * 40)
+    else:
+        score += 0  # unverified services get 0 uptime points
+
+    # Latency component (20 pts)
+    avg_lat = stats.get("avg_latency_ms")
+    if avg_lat is None:
+        score += 10  # neutral — not enough data
+    elif avg_lat < 200:
+        score += 20
+    elif avg_lat < 500:
+        score += 15
+    elif avg_lat < 1000:
+        score += 10
+    else:
+        score += 5
+
+    # Verification depth (20 pts)
+    total_checks = stats.get("total_checks", 0)
+    if total_checks >= 10:
+        score += 20
+    elif total_checks >= 3:
+        score += 10
+    elif total_checks >= 1:
+        score += 5
+    else:
+        score += 0
+
+    # Facilitator compatibility (10 pts)
+    if entry.get("facilitator_compatible", False):
+        score += 10
+
+    # Source bonus (10 pts)
+    source = entry.get("source", "")
+    if source == "first-party":
+        score += 10
+    elif source == "manual":
+        score += 8
+    elif source == "ecosystem":
+        score += 6
+    else:
+        score += 4  # auto-registered / unknown
+
+    return min(100, max(0, score))
+
+
 def _enrich_with_quality(entry: dict) -> dict:
     url = entry.get("url", "")
     stats = _get_health_stats(url)
@@ -116,6 +224,7 @@ def _enrich_with_quality(entry: dict) -> dict:
     enriched["successful_checks"] = stats["successful_checks"]
     enriched["last_health_check"] = last["checked_at"] if last else None
     enriched["health_status"] = _compute_health_status(stats, last)
+    enriched["trust_score"] = compute_trust_score(enriched)
     return enriched
 
 # ---------------------------------------------------------------------------
@@ -158,5 +267,6 @@ async def _background_health_checker() -> None:
                 reg_entry["avg_latency_ms"] = stats["avg_latency_ms"]
                 reg_entry["last_health_check"] = last["checked_at"] if last else None
                 reg_entry["health_status"] = _compute_health_status(stats, last)
+                reg_entry["trust_score"] = _compute_trust_score(reg_entry, stats, last)
         _save_registry(_registry)
         log.info("Background health check complete")
