@@ -156,56 +156,125 @@ _DISCOVER_VERIFY_PROMPT_TEMPLATE = (
 )
 
 
-def build_mcp_app(search_fn, trust_fn=None):
-    """
-    Build the FastMCP ASGI app and return (mcp_app, combined_lifespan_fn).
-
-    Args:
-        search_fn: callable(query, category, min_uptime, limit) -> list of result dicts
-        trust_fn: async callable(wallet_or_url) -> trust profile dict
-
-    Returns:
-        (mcp_http_app, combine_lifespans_fn) or (None, None) if fastmcp unavailable
-    """
-    if not FASTMCP_AVAILABLE:
-        return None, None
-
-    x402_mcp = FastMCP(
-        "x402 Service Discovery",
-        instructions=(
-            "Discovers x402-payable APIs for autonomous agents. "
-            "Use x402_discover to find endpoints that accept micropayments on Base. "
-            "Each call to x402_discover costs $0.010 USDC via x402 protocol. "
-            "Use x402_trust to check a service's ERC-8004 on-chain trust profile."
-        ),
-    )
-
+def _make_tool_decorator(mcp):
+    """Return a _tool(**ann) factory bound to the given FastMCP instance."""
     def _tool(**ann):
-        """Return an @x402_mcp.tool decorator, with ToolAnnotations if available."""
         if HAS_ANNOTATIONS:
-            return x402_mcp.tool(annotations=ToolAnnotations(**ann))
-        return x402_mcp.tool
+            return mcp.tool(annotations=ToolAnnotations(**ann))
+        return mcp.tool
+    return _tool
 
-    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
-    async def x402_discover(query: str) -> dict:
+
+def _register_scan_tool(mcp, api_base):  # noqa: ARG001 (api_base reserved for future use)
+    """Register the x402_scan compliance-check tool on *mcp*."""
+    _tool = _make_tool_decorator(mcp)
+
+    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)
+    async def x402_scan(url: str) -> dict:
         """
-        Discover x402-payable services matching a query.
+        Scan a URL for x402 protocol compliance and return a compliance score.
 
-        Searches the registry of x402-enabled APIs and returns matching endpoints
-        with quality signals (uptime, latency, payment details).
+        Probes the endpoint and analyzes the response for x402 protocol signals:
+        - Returns HTTP 402 with well-formed payment requirements
+        - Uses EIP-3009 transferWithAuthorization (not plain USDC transfer)
+        - USDC on Base network (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
+        - Proper x402Version field in response body
+        - Valid 'accepts' array with scheme/network/asset/maxAmountRequired
+
+        Free — no payment required.
 
         Args:
-            query: Natural language or keyword search (e.g. 'weather', 'llm', 'research')
+            url: The endpoint URL to scan for x402 compliance
 
         Returns:
-            dict with 'results' (list of matching services) and 'count'
+            dict with compliance_score (0-100), signals found, and recommendations
         """
-        results = search_fn(query, None, None, 5)
-        # Surface trust_score prominently — agents should see it at a glance
-        for r in results:
-            if "trust_score" in r:
-                r["trust"] = f"{r['trust_score']}/100"
-        return {"results": results, "count": len(results), "query": query}
+        import httpx as _httpx
+        import json as _json
+
+        signals: list = []
+        issues: list = []
+        score = 0
+
+        try:
+            async with _httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                resp = await client.get(url, headers={"Accept": "application/json"})
+
+                if resp.status_code == 402:
+                    signals.append("✅ Returns HTTP 402 Payment Required")
+                    score += 30
+                elif resp.status_code in (200, 401, 403):
+                    issues.append(f"⚠️ Returns {resp.status_code}, not 402 — may require x402 header to trigger payment flow")
+                    score += 5
+                else:
+                    issues.append(f"❌ Returns {resp.status_code} — unexpected response")
+
+                body = {}
+                try:
+                    body = resp.json()
+                except Exception:
+                    issues.append("⚠️ Response body is not valid JSON")
+
+                if body.get("x402Version"):
+                    signals.append(f"✅ x402Version: {body['x402Version']}")
+                    score += 20
+                else:
+                    issues.append("❌ Missing x402Version field in response body")
+
+                accepts = body.get("accepts", [])
+                if accepts and isinstance(accepts, list):
+                    first = accepts[0]
+                    if first.get("scheme") and first.get("network") and first.get("maxAmountRequired"):
+                        signals.append(f"✅ Valid accepts array — scheme={first.get('scheme')}, network={first.get('network')}, amount={first.get('maxAmountRequired')}")
+                        score += 20
+                    else:
+                        issues.append("⚠️ accepts array present but malformed — missing scheme/network/maxAmountRequired")
+                        score += 5
+                else:
+                    issues.append("❌ Missing or empty accepts array")
+
+                usdc_base = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                body_str = _json.dumps(body).lower()
+                if usdc_base.lower() in body_str:
+                    signals.append("✅ USDC on Base (ERC-20 contract address found)")
+                    score += 15
+                elif "base" in body_str and ("usdc" in body_str or "erc" in body_str):
+                    signals.append("✅ Base network USDC referenced")
+                    score += 10
+                else:
+                    issues.append("⚠️ No USDC/Base contract address detected — may use other payment asset")
+
+                if "transferWithAuthorization" in _json.dumps(body) or "eip3009" in body_str or "eip-3009" in body_str:
+                    signals.append("✅ EIP-3009 transferWithAuthorization referenced (gasless payments)")
+                    score += 15
+                elif resp.status_code == 402:
+                    signals.append("ℹ️ EIP-3009 assumed (standard x402 flow)")
+                    score += 8
+                else:
+                    issues.append("⚠️ Could not confirm EIP-3009 compliance — check payment scheme")
+
+        except _httpx.TimeoutException:
+            return {"url": url, "compliance_score": 0, "signals": [], "issues": ["❌ Connection timed out (10s)"], "recommendation": "Service is unreachable. Verify the URL is correct and the service is running.", "registered_in_catalog": False}
+        except Exception as e:
+            return {"url": url, "compliance_score": 0, "signals": [], "issues": [f"❌ Error scanning: {e}"], "recommendation": "Could not connect to this URL.", "registered_in_catalog": False}
+
+        if score >= 80:
+            grade, recommendation = "A — Fully x402 Compliant", "This service passes all x402 compliance checks. Safe to use with autonomous agents."
+        elif score >= 60:
+            grade, recommendation = "B — Mostly Compliant", "Service implements core x402 signals. Review issues for full compliance."
+        elif score >= 40:
+            grade, recommendation = "C — Partial Compliance", "Service has some x402 characteristics but significant gaps. Use with caution."
+        elif score >= 20:
+            grade, recommendation = "D — Minimal Compliance", "Service barely meets x402 requirements. Not recommended for autonomous payments."
+        else:
+            grade, recommendation = "F — Not x402 Compliant", "Service does not implement x402 protocol. Do not attempt autonomous payments."
+
+        return {"url": url, "compliance_score": score, "grade": grade, "signals": signals, "issues": issues, "recommendation": recommendation}
+
+
+def _register_browse_tool(mcp, search_fn, api_base):  # noqa: ARG001
+    """Register x402_browse and x402_health tools on *mcp*."""
+    _tool = _make_tool_decorator(mcp)
 
     @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
     async def x402_browse(category: str = "", limit: int = 20) -> dict:
@@ -253,6 +322,32 @@ def build_mcp_app(search_fn, trust_fn=None):
                 }
         return {"url": url, "health_status": "not_found", "error": "Service not in registry"}
 
+
+def _register_discover_tools(mcp, search_fn, trust_fn, api_base):  # noqa: ARG001
+    """Register x402_discover and x402_trust tools on *mcp*."""
+    _tool = _make_tool_decorator(mcp)
+
+    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+    async def x402_discover(query: str) -> dict:
+        """
+        Discover x402-payable services matching a query.
+
+        Searches the registry of x402-enabled APIs and returns matching endpoints
+        with quality signals (uptime, latency, payment details).
+
+        Args:
+            query: Natural language or keyword search (e.g. 'weather', 'llm', 'research')
+
+        Returns:
+            dict with 'results' (list of matching services) and 'count'
+        """
+        results = search_fn(query, None, None, 5)
+        # Surface trust_score prominently — agents should see it at a glance
+        for r in results:
+            if "trust_score" in r:
+                r["trust"] = f"{r['trust_score']}/100"
+        return {"results": results, "count": len(results), "query": query}
+
     @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=True)
     async def x402_trust(wallet_or_url: str) -> dict:
         """
@@ -278,11 +373,12 @@ def build_mcp_app(search_fn, trust_fn=None):
                 return await trust_fn(wallet=wallet_or_url)
             else:
                 return await trust_fn(service_url=wallet_or_url)
-        return {
-            "wallet": wallet_or_url,
-            "erc8004_status": "unavailable",
-            "error": "Trust lookup function not initialized",
-        }
+        return {"wallet": wallet_or_url, "erc8004_status": "unavailable", "error": "Trust lookup function not initialized"}
+
+
+def _register_registration_tools(mcp, api_base):  # noqa: ARG001
+    """Register x402_register and x402_attest tools on *mcp*."""
+    _tool = _make_tool_decorator(mcp)
 
     @_tool(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
     async def x402_register(
@@ -340,141 +436,36 @@ def build_mcp_app(search_fn, trust_fn=None):
         """
         return await _attest_service(service_id, raw)
 
-    @_tool(readOnlyHint=True, destructiveHint=False, idempotentHint=False, openWorldHint=True)
-    async def x402_scan(url: str) -> dict:
-        """
-        Scan a URL for x402 protocol compliance and return a compliance score.
 
-        Probes the endpoint and analyzes the response for x402 protocol signals:
-        - Returns HTTP 402 with well-formed payment requirements
-        - Uses EIP-3009 transferWithAuthorization (not plain USDC transfer)
-        - USDC on Base network (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
-        - Proper x402Version field in response body
-        - Valid 'accepts' array with scheme/network/asset/maxAmountRequired
+def build_mcp_app(search_fn, trust_fn=None):
+    """
+    Build the FastMCP ASGI app and return (mcp_app, combined_lifespan_fn).
 
-        Free — no payment required.
+    Args:
+        search_fn: callable(query, category, min_uptime, limit) -> list of result dicts
+        trust_fn: async callable(wallet_or_url) -> trust profile dict
 
-        Args:
-            url: The endpoint URL to scan for x402 compliance
+    Returns:
+        (mcp_http_app, combine_lifespans_fn) or (None, None) if fastmcp unavailable
+    """
+    if not FASTMCP_AVAILABLE:
+        return None, None
 
-        Returns:
-            dict with compliance_score (0-100), signals found, and recommendations
-        """
-        import httpx as _httpx
-        import json as _json
+    api_base = "https://x402-discovery-api.onrender.com"
+    x402_mcp = FastMCP(
+        "x402 Service Discovery",
+        instructions=(
+            "Discovers x402-payable APIs for autonomous agents. "
+            "Use x402_discover to find endpoints that accept micropayments on Base. "
+            "Each call to x402_discover costs $0.010 USDC via x402 protocol. "
+            "Use x402_trust to check a service's ERC-8004 on-chain trust profile."
+        ),
+    )
 
-        signals = []
-        issues = []
-        score = 0
-
-        try:
-            async with _httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                resp = await client.get(url, headers={"Accept": "application/json"})
-
-                # Signal 1: Returns 402 (30 pts)
-                if resp.status_code == 402:
-                    signals.append("✅ Returns HTTP 402 Payment Required")
-                    score += 30
-                elif resp.status_code in (200, 401, 403):
-                    issues.append(f"⚠️ Returns {resp.status_code}, not 402 — may require x402 header to trigger payment flow")
-                    score += 5  # partial credit — endpoint is reachable
-                else:
-                    issues.append(f"❌ Returns {resp.status_code} — unexpected response")
-
-                # Try to parse body
-                body = {}
-                try:
-                    body = resp.json()
-                except Exception:
-                    issues.append("⚠️ Response body is not valid JSON")
-
-                # Signal 2: x402Version field (20 pts)
-                if body.get("x402Version"):
-                    signals.append(f"✅ x402Version: {body['x402Version']}")
-                    score += 20
-                else:
-                    issues.append("❌ Missing x402Version field in response body")
-
-                # Signal 3: Valid accepts array (20 pts)
-                accepts = body.get("accepts", [])
-                if accepts and isinstance(accepts, list) and len(accepts) > 0:
-                    first = accepts[0]
-                    if first.get("scheme") and first.get("network") and first.get("maxAmountRequired"):
-                        signals.append(f"✅ Valid accepts array — scheme={first.get('scheme')}, network={first.get('network')}, amount={first.get('maxAmountRequired')}")
-                        score += 20
-                    else:
-                        issues.append("⚠️ accepts array present but malformed — missing scheme/network/maxAmountRequired")
-                        score += 5
-                else:
-                    issues.append("❌ Missing or empty accepts array")
-
-                # Signal 4: USDC on Base (15 pts)
-                usdc_base = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                body_str = _json.dumps(body).lower()
-                if usdc_base.lower() in body_str:
-                    signals.append("✅ USDC on Base (ERC-20 contract address found)")
-                    score += 15
-                elif "base" in body_str and ("usdc" in body_str or "erc" in body_str):
-                    signals.append("✅ Base network USDC referenced")
-                    score += 10
-                else:
-                    issues.append("⚠️ No USDC/Base contract address detected — may use other payment asset")
-
-                # Signal 5: EIP-3009 vs plain transfer (15 pts)
-                if "transferWithAuthorization" in _json.dumps(body) or "eip3009" in body_str or "eip-3009" in body_str:
-                    signals.append("✅ EIP-3009 transferWithAuthorization referenced (gasless payments)")
-                    score += 15
-                elif resp.status_code == 402:
-                    # x402 v1 spec uses EIP-3009 by default — credit if 402 returned
-                    signals.append("ℹ️ EIP-3009 assumed (standard x402 flow)")
-                    score += 8
-                else:
-                    issues.append("⚠️ Could not confirm EIP-3009 compliance — check payment scheme")
-
-        except _httpx.TimeoutException:
-            return {
-                "url": url,
-                "compliance_score": 0,
-                "signals": [],
-                "issues": ["❌ Connection timed out (10s)"],
-                "recommendation": "Service is unreachable. Verify the URL is correct and the service is running.",
-                "registered_in_catalog": False,
-            }
-        except Exception as e:
-            return {
-                "url": url,
-                "compliance_score": 0,
-                "signals": [],
-                "issues": [f"❌ Error scanning: {e}"],
-                "recommendation": "Could not connect to this URL.",
-                "registered_in_catalog": False,
-            }
-
-        # Grade
-        if score >= 80:
-            grade = "A — Fully x402 Compliant"
-            recommendation = "This service passes all x402 compliance checks. Safe to use with autonomous agents."
-        elif score >= 60:
-            grade = "B — Mostly Compliant"
-            recommendation = "Service implements core x402 signals. Review issues for full compliance."
-        elif score >= 40:
-            grade = "C — Partial Compliance"
-            recommendation = "Service has some x402 characteristics but significant gaps. Use with caution."
-        elif score >= 20:
-            grade = "D — Minimal Compliance"
-            recommendation = "Service barely meets x402 requirements. Not recommended for autonomous payments."
-        else:
-            grade = "F — Not x402 Compliant"
-            recommendation = "Service does not implement x402 protocol. Do not attempt autonomous payments."
-
-        return {
-            "url": url,
-            "compliance_score": score,
-            "grade": grade,
-            "signals": signals,
-            "issues": issues,
-            "recommendation": recommendation,
-        }
+    _register_scan_tool(x402_mcp, api_base)
+    _register_browse_tool(x402_mcp, search_fn, api_base)
+    _register_discover_tools(x402_mcp, search_fn, trust_fn, api_base)
+    _register_registration_tools(x402_mcp, api_base)
 
     @x402_mcp.prompt
     def find_service_for_task(task: str) -> str:
