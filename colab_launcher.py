@@ -415,6 +415,36 @@ def _schedule_overdue_recurring_tasks() -> None:
         })
         scheduled.append(f"social_listening (last: {hours_social:.0f}h ago)")
 
+    # 4. Daily code improvement — check last_code_improvement_utc (24h interval)
+    hours_code_improvement = _hours_since(r'last_code_improvement_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})')
+    if hours_code_improvement >= 24.0:
+        tid = uuid.uuid4().hex[:8]
+        enqueue_task({
+            "id": tid,
+            "type": "task",
+            "chat_id": int(chat_id),
+            "text": (
+                "Daily code improvement task (startup scheduler triggered this).\n\n"
+                "Inspect the x402Scout codebase and find ONE specific item needing improvement. "
+                "Rotate through categories: code quality → flow/UX → functionality → visuals/docs → performance.\n\n"
+                "Scope (both repos):\n"
+                "- https://github.com/rplryan/x402-discovery-mcp (Discovery API + MCP server + CLI)\n"
+                "- https://github.com/rplryan/x402-proxy (Proxy tool)\n\n"
+                "Process:\n"
+                "1. Read key files: main.py, cli/index.js, README.md, recent commits (last 5)\n"
+                "2. Identify ONE specific item needing improvement — be concrete, not vague\n"
+                "3. Implement the improvement — make the actual code change, commit, push\n"
+                "4. Report: what was found, what was changed, why it matters\n"
+                "5. Update scratchpad: set last_code_improvement_utc to current UTC timestamp in format YYYY-MM-DDTHH:MM\n\n"
+                "Rules:\n"
+                "- Must result in a real commit to the repo\n"
+                "- Prefer user-facing improvements over internal cleanup\n"
+                "- One meaningful change, not a massive refactor\n"
+                "- If already an obvious improvement in progress from another task, pick the next category"
+            ),
+        })
+        scheduled.append(f"code_improvement (last: {hours_code_improvement:.0f}h ago)")
+
     if scheduled:
         persist_queue_snapshot(reason="startup_recurring_scheduler")
         append_jsonl(DRIVE_ROOT / "logs" / "supervisor.jsonl", {
