@@ -18,6 +18,8 @@ import os
 import re
 import sqlite3
 import time
+import collections
+import ipaddress
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -619,6 +621,36 @@ def _migrate_entry(entry: dict) -> dict:
 
 _registry: list[dict] = [_migrate_entry(e) for e in _load_registry()]
 init_db()  # Ensure DB tables exist before any request can hit DB-dependent routes
+
+# ---------------------------------------------------------------------------
+# POST /register — rate limiter (IP-based, in-memory)
+# ---------------------------------------------------------------------------
+# Keyed by IP address → deque of registration timestamps (float, epoch seconds)
+_register_rate: dict[str, collections.deque] = collections.defaultdict(
+    lambda: collections.deque()
+)
+_REGISTER_RATE_LIMIT = 10      # max registrations per IP
+_REGISTER_RATE_WINDOW = 3600   # per 1 hour (seconds)
+
+_PRIVATE_IP_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+def _is_ssrf_url(url: str) -> bool:
+    """Return True if the URL points at a private/internal IP (block SSRF via /register)."""
+    import urllib.parse
+    try:
+        host = urllib.parse.urlparse(url).hostname or ""
+        addr = ipaddress.ip_address(host)
+        return any(addr in net for net in _PRIVATE_IP_NETS)
+    except ValueError:
+        # hostname (not an IP literal) — pass through; DNS resolution not done here
+        return False
 
 
 async def _extract_x402_payment_metadata(url: str) -> dict:
@@ -1278,7 +1310,38 @@ async def discover(
 # ---------------------------------------------------------------------------
 
 @app.post("/register", status_code=201)
-async def register(body: RegisterRequest) -> JSONResponse:
+async def register(body: RegisterRequest, request: Request) -> JSONResponse:
+    # --- URL must be HTTPS ---
+    if not body.url.startswith("https://"):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "URL must begin with https://"},
+        )
+
+    # --- SSRF guard: reject private/loopback IP literals ---
+    if _is_ssrf_url(body.url):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Registering internal/private network URLs is not permitted."},
+        )
+
+    # --- IP-based rate limit ---
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    bucket = _register_rate[client_ip]
+    # Evict timestamps older than the window
+    while bucket and now - bucket[0] > _REGISTER_RATE_WINDOW:
+        bucket.popleft()
+    if len(bucket) >= _REGISTER_RATE_LIMIT:
+        log.warning("POST /register — rate-limited ip=%s", client_ip)
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": "3600"},
+            content={"error": f"Rate limit exceeded: max {_REGISTER_RATE_LIMIT} registrations per hour per IP."},
+        )
+    bucket.append(now)
+
+    # --- Duplicate check ---
     for existing in _registry:
         if existing.get("url") == body.url:
             return JSONResponse(
@@ -1314,7 +1377,7 @@ async def register(body: RegisterRequest) -> JSONResponse:
         entry["x402_metadata_verified_at"] = datetime.now(timezone.utc).isoformat()
         _save_registry(_registry)
 
-    log.info("POST /register — new endpoint id=%s name=%r", entry["id"], entry["name"])
+    log.info("POST /register — new endpoint id=%s name=%r ip=%s", entry["id"], entry["name"], client_ip)
     return JSONResponse(status_code=201, content={"registered": True, "id": entry["id"], "entry": entry})
 
 # ---------------------------------------------------------------------------
