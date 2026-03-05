@@ -488,6 +488,12 @@ def _load_registry() -> list[dict]:
     if REGISTRY_PATH.exists():
         with REGISTRY_PATH.open() as fh:
             return json.load(fh)
+    # Fall back to seed file to survive Render deploys without losing catalog data
+    seed_path = REGISTRY_PATH.parent / "registry_seed.json"
+    if seed_path.exists():
+        log.info("registry.json not found, loading from registry_seed.json")
+        with seed_path.open() as fh:
+            return json.load(fh)
     return []
 
 
