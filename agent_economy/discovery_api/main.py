@@ -887,6 +887,121 @@ def _score_entry(entry: dict, keywords: list[str]) -> int:
     return score
 
 
+def _build_how_to_use(entry: dict) -> dict:
+    """Build a howToUse integration block for a service entry.
+    
+    This gives agents the exact x402 payment flow steps for this specific service,
+    using real metadata (payment_address, network, price) extracted during scanning.
+    """
+    url = entry.get("url", "")
+    price_usd = entry.get("price_usd") or 0.01
+    payment_address = entry.get("payment_address") or "<payTo from 402 response>"
+    asset_contract = entry.get("asset_contract") or "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    network = entry.get("x402_network") or entry.get("network") or "base"
+    x402_version = entry.get("x402_version") or 1
+    recommended_facilitator = entry.get("recommended_facilitator") or "https://x402.org/facilitator"
+    trust_score = entry.get("trust_score")
+    scan_url = f"{SERVICE_BASE_URL}/scan?url={url}"
+
+    steps = [
+        {
+            "step": 1,
+            "action": "probe",
+            "description": "Make a request to the service endpoint",
+            "method": "GET",
+            "url": url,
+            "expected_response": {
+                "status": 402,
+                "header": "WWW-Authenticate",
+                "body_fields": ["scheme", "paymentRequirements"]
+            }
+        },
+        {
+            "step": 2,
+            "action": "authorize",
+            "description": "Construct a signed EIP-3009 authorization for the payment",
+            "details": {
+                "x402_version": x402_version,
+                "scheme": "exact",
+                "network": network,
+                "asset": asset_contract,
+                "payTo": payment_address,
+                "maxAmountRequired": str(int(price_usd * 1_000_000)),
+                "asset_decimals": 6,
+                "asset_ticker": "USDC"
+            },
+            "sdk_hint": "Use the x402 Python SDK or JS SDK: await createPaymentHeader(requirements)"
+        },
+        {
+            "step": 3,
+            "action": "execute",
+            "description": "Retry the request with the X-PAYMENT header",
+            "method": "GET",
+            "url": url,
+            "headers": {
+                "X-PAYMENT": "<base64-encoded signed authorization from step 2>"
+            },
+            "facilitator": recommended_facilitator
+        },
+        {
+            "step": 4,
+            "action": "verify_response",
+            "description": "Check X-PAYMENT-RESPONSE header to confirm settlement",
+            "headers_to_check": ["X-PAYMENT-RESPONSE"]
+        }
+    ]
+
+    block = {
+        "integration_pattern": "x402-direct",
+        "x402_version": x402_version,
+        "network": network,
+        "price_usd": price_usd,
+        "payment_address": payment_address,
+        "asset": {
+            "contract": asset_contract,
+            "ticker": "USDC",
+            "decimals": 6
+        },
+        "facilitator": recommended_facilitator,
+        "steps": steps,
+        "sdk_links": {
+            "python": "https://pypi.org/project/x402-payment-harness/",
+            "javascript": "https://www.npmjs.com/package/x402",
+            "cli": "https://www.npmjs.com/package/x402scout"
+        },
+        "verify_at": scan_url
+    }
+
+    if trust_score is not None:
+        block["trust_score"] = trust_score
+
+    return block
+
+SERVICE_BASE_URL: str = os.getenv(
+    "SERVICE_BASE_URL", "https://x402scout.com"
+)
+
+REGISTRY_PATH: Path = Path(__file__).parent / "registry.json"
+DB_PATH: Path = Path(__file__).parent / "health.db"
+
+HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
+SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+log = logging.getLogger("x402-discovery")
+
+# ---------------------------------------------------------------------------
+# SQLite health DB
+# ---------------------------------------------------------------------------
+
 def _search(
     q: Optional[str],
     category: Optional[str],
@@ -923,7 +1038,10 @@ def _search(
         return (-featured, -trust, -uptime, latency, [-ord(c) for c in registered[:10]])
 
     enriched.sort(key=quality_sort_key)
-    return enriched[:limit]
+    results = enriched[:limit]
+    for r in results:
+        r["howToUse"] = _build_how_to_use(r)
+    return results
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -1112,7 +1230,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.6.0",
+    version="3.7.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.010 USDC on Base."
@@ -1188,7 +1306,7 @@ async def root(request: Request):
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.6.0",
+            "version": "3.7.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.010 USDC on Base."
@@ -1928,7 +2046,7 @@ _SERVER_CARD_DATA = {
     "serverInfo": {
         "name": "x402-discovery-mcp",
         "displayName": "x402 Service Discovery",
-        "version": "3.6.0",
+        "version": "3.7.0",
         "description": "The index for the x402 agent economy. Discover, route, and verify 251+ live x402-payable services across Base mainnet. Quality signals, health monitoring, trust attestations, and payment facilitator compatibility — everything an AI agent needs to pay its way through the web.",
         "homepage": "https://github.com/rplryan/x402-discovery-mcp",
         "icon": "https://raw.githubusercontent.com/rplryan/x402-discovery-mcp/main/icon.png"
