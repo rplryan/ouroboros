@@ -1049,9 +1049,12 @@ async def catalog_refresh(background_tasks: BackgroundTasks) -> dict:
 @app.get("/", include_in_schema=False)
 async def root(request: Request):
     from fastapi.responses import HTMLResponse
-    from landing import LANDING_HTML
+    try:
+        from landing import LANDING_HTML
+    except ImportError:
+        LANDING_HTML = None
     accept = request.headers.get("accept", "")
-    if "text/html" in accept:
+    if "text/html" in accept and LANDING_HTML is not None:
         return HTMLResponse(content=LANDING_HTML)
     return JSONResponse(
         {
@@ -2140,33 +2143,25 @@ async def mcp_call(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"Unknown tool: {tool_name}"}, status_code=404)
 
 # Mount MCP Streamable HTTP Transport (Smithery-compatible) from mcp_transport module
-from mcp_transport import create_mcp_router  # noqa: E402
-
-
-async def _trust_stub(wallet: str | None = None, service_url: str | None = None) -> dict:
-    """Stub trust function — ERC-8004 integration temporarily disabled."""
-    return {
-        "status": "pending",
-        "wallet": wallet,
-        "service_url": service_url,
-        "message": "ERC-8004 trust verification temporarily unavailable",
-    }
-
-
-app.include_router(create_mcp_router(
-    registry=_registry,
-    search_fn=_search,
-    payment_fn=verify_payment,
-    enrich_fn=_enrich_with_quality,
-    health_stats_fn=_get_health_stats,
-    last_check_fn=_get_last_check,
-    health_status_fn=_compute_health_status,
-    migrate_fn=_migrate_entry,
-    save_fn=_save_registry,
-    query_price_units=QUERY_PRICE_UNITS,
-    payment_required_body_fn=_payment_required_body,
-    trust_fn=_trust_stub,
-))
+try:
+    from mcp_transport import create_mcp_router  # noqa: E402
+    app.include_router(create_mcp_router(
+        registry=_registry,
+        search_fn=_search,
+        payment_fn=verify_payment,
+        enrich_fn=_enrich_with_quality,
+        health_stats_fn=_get_health_stats,
+        last_check_fn=_get_last_check,
+        health_status_fn=_compute_health_status,
+        migrate_fn=_migrate_entry,
+        save_fn=_save_registry,
+        query_price_units=QUERY_PRICE_UNITS,
+        payment_required_body_fn=_payment_required_body,
+        trust_fn=_trust_stub,
+    ))
+    log.info("mcp_transport router mounted")
+except ImportError:
+    log.info("mcp_transport not available — skipping legacy MCP router")
 
 if oauth_router is not None:
     app.include_router(oauth_router)
