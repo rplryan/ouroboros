@@ -32,6 +32,18 @@ from pydantic import BaseModel, field_validator
 
 load_dotenv()
 
+# Load landing page HTML at startup
+import importlib.util as _ilu
+import pathlib as _pathlib
+_landing_path = _pathlib.Path(__file__).parent / "landing.py"
+try:
+    _lspec = _ilu.spec_from_file_location("landing", _landing_path)
+    _lmod = _ilu.module_from_spec(_lspec)
+    _lspec.loader.exec_module(_lmod)
+    LANDING_HTML = _lmod.LANDING_HTML
+except Exception:
+    LANDING_HTML = None
+
 # Try to import scraper (optional dependency)
 try:
     from scraper import scrape_x402scan
@@ -1059,13 +1071,12 @@ async def catalog_refresh(background_tasks: BackgroundTasks) -> dict:
 
 @app.get("/", include_in_schema=False)
 async def root(request: Request):
-    from fastapi.responses import HTMLResponse
-    try:
-        from landing import LANDING_HTML
-    except ImportError:
-        LANDING_HTML = None
     accept = request.headers.get("accept", "")
-    if "text/html" in accept and LANDING_HTML is not None:
+    user_agent = request.headers.get("user-agent", "").lower()
+    # Serve HTML to browsers (not to curl/python/API clients)
+    is_browser = "text/html" in accept and "curl" not in user_agent and "python" not in user_agent
+    if is_browser and LANDING_HTML is not None:
+        from fastapi.responses import HTMLResponse
         return HTMLResponse(content=LANDING_HTML)
     return JSONResponse(
         {
