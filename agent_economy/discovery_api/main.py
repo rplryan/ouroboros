@@ -1027,8 +1027,16 @@ async def _app_lifespan(app: FastAPI):
     _enforce_first_party_from_seed()  # Always use authoritative seed data for first-party products
     health_task = asyncio.create_task(_background_health_checker())
     scraper_task = asyncio.create_task(_background_scraper())
+
+    async def _background_enforce_first_party() -> None:
+        while True:
+            await asyncio.sleep(300)
+            _enforce_first_party_from_seed()
+
+    enforce_task = asyncio.create_task(_background_enforce_first_party())
     log.info("Background health checker started (interval=%ds)", HEALTH_CHECK_INTERVAL_SECS)
     log.info("Background scraper started (x402scan + ecosystem, interval=%ds)", SCRAPE_INTERVAL_SECS)
+    log.info("Background first-party enforcer started (interval=300s)")
     # Register with facilitator networks for auto-discovery
     asyncio.create_task(_register_with_payai())
     # Start MCP streamable HTTP lifespan (session manager task group)
@@ -1039,20 +1047,26 @@ async def _app_lifespan(app: FastAPI):
             finally:
                 health_task.cancel()
                 scraper_task.cancel()
+                enforce_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await health_task
                 with contextlib.suppress(asyncio.CancelledError):
                     await scraper_task
+                with contextlib.suppress(asyncio.CancelledError):
+                    await enforce_task
     else:
         try:
             yield
         finally:
             health_task.cancel()
             scraper_task.cancel()
+            enforce_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await health_task
             with contextlib.suppress(asyncio.CancelledError):
                 await scraper_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await enforce_task
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -1113,6 +1127,15 @@ async def catalog_refresh(background_tasks: BackgroundTasks) -> dict:
         "status": "refresh_started",
         "message": "Catalog scan running in background. Check /stats in ~60 seconds for updated count.",
         "current_service_count": len(_registry),
+    }
+
+@app.post("/admin/enforce-first-party", tags=["admin"])
+async def enforce_first_party() -> dict:
+    """Admin endpoint: immediately re-apply first-party seed data to the registry."""
+    _enforce_first_party_from_seed()
+    return {
+        "enforced": True,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
     }
 
 @app.get("/", include_in_schema=False)
