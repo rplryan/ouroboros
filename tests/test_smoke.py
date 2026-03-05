@@ -43,7 +43,6 @@ TOOL_MODULES = [
     "ouroboros.tools.control",
     "ouroboros.tools.browser",
     "ouroboros.tools.review",
-    "ouroboros.tools.mail_monitor",
 ]
 
 SUPERVISOR_MODULES = [
@@ -115,7 +114,6 @@ EXPECTED_TOOLS = [
     "compact_context",
     "list_available_tools",
     "enable_tools",
-    "check_email_inbox",
 ]
 
 
@@ -347,7 +345,7 @@ def test_no_oversized_modules():
     max_lines = 1000
     violations = []
     for root, dirs, files in os.walk(REPO):
-        dirs[:] = [d for d in dirs if d not in ('.git', '__pycache__', 'tests', 'agent_economy', 'docs')]
+        dirs[:] = [d for d in dirs if d not in ('.git', '__pycache__', 'tests', 'docs')]
         for f in files:
             if not f.endswith(".py"):
                 continue
