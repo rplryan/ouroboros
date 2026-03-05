@@ -92,7 +92,7 @@ NETWORK: str = os.getenv("NETWORK", "base")
 USDC_CONTRACT: str = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
 QUERY_PRICE_UNITS: str = os.getenv("QUERY_PRICE_USDC_UNITS", "10000")       # $0.010
-HEALTH_PRICE_UNITS: str = os.getenv("HEALTH_CHECK_PRICE_USDC_UNITS", "50000")  # $0.05 (reserved)
+HEALTH_PRICE_UNITS: str = os.getenv("HEALTH_PRICE_USDC_UNITS", "1000")         # $0.001
 
 FACILITATOR_URL: str = os.getenv(
     "FACILITATOR_URL", "https://api.cdp.coinbase.com/platform/v2/x402/verify"
@@ -1170,7 +1170,7 @@ async def root(request: Request):
                 "discover": "GET /discover?q={keyword}&category={category}&capability={tag}&max_price={usd}&limit={limit} (paid $0.010)",
                 "register": "POST /register (free)",
                 "report": "POST /report (free — agent outcome reporting)",
-                "health": "GET /health/{endpoint_id} (free)",
+                "health": "GET /health/{endpoint_id} (paid $0.001 — live on-demand health check)",
                 "catalog": "GET /catalog (free)",
                 "mcp": "GET /mcp (Streamable HTTP MCP for claude.ai/mcp) | GET /mcp-manifest (legacy JSON manifest)",
                 "scan": "GET /scan?url={url} (paid $0.010 — x402 compliance scan)",
@@ -1318,11 +1318,40 @@ async def register(body: RegisterRequest) -> JSONResponse:
     return JSONResponse(status_code=201, content={"registered": True, "id": entry["id"], "entry": entry})
 
 # ---------------------------------------------------------------------------
-# GET /health/{endpoint_id} — FREE (ungated for now)
+# GET /health/{endpoint_id} — $0.001 USDC
 # ---------------------------------------------------------------------------
 
 @app.get("/health/{endpoint_id}")
 async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
+    host = request.headers.get("host", "localhost")
+    resource_path = f"/health/{endpoint_id}"
+    payment_header = request.headers.get("X-PAYMENT")
+
+    if not payment_header:
+        log.info("GET /health/%s — 402 (no payment)", endpoint_id)
+        return JSONResponse(
+            status_code=402,
+            content=_payment_required_body(
+                host, resource_path, HEALTH_PRICE_UNITS,
+                "x402 Live Health Check — on-demand probe of a registered service with real-time uptime stats and latency",
+            ),
+        )
+
+    resource_url = f"https://{host}{resource_path}"
+    is_valid, payment_response = await verify_payment(
+        payment_header, resource_url, HEALTH_PRICE_UNITS
+    )
+
+    if not is_valid:
+        log.warning("GET /health/%s — 402 (invalid payment)", endpoint_id)
+        return JSONResponse(
+            status_code=402,
+            content=_payment_required_body(
+                host, resource_path, HEALTH_PRICE_UNITS,
+                "x402 Live Health Check — on-demand probe of a registered service with real-time uptime stats and latency",
+            ),
+        )
+
     entry = next((e for e in _registry if e["id"] == endpoint_id), None)
     if not entry:
         log.info("GET /health/%s — 404", endpoint_id)
@@ -1357,7 +1386,8 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
             reg_entry["health_status"] = health_status
     _save_registry(_registry)
 
-    return JSONResponse({
+    log.info("GET /health/%s — 200 (payment verified)", endpoint_id)
+    json_response = JSONResponse({
         "endpoint_id": endpoint_id,
         "name": entry.get("name"),
         "url": target_url,
@@ -1371,6 +1401,9 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
         "successful_checks": stats["successful_checks"],
         "health_status": health_status,
     })
+    if payment_response:
+        json_response.headers["X-PAYMENT-RESPONSE"] = payment_response
+    return json_response
 
 # ---------------------------------------------------------------------------
 # GET /catalog — free
@@ -1479,6 +1512,13 @@ async def well_known_x402_json():
                 "payment_required": True,
                 "price": {"amount": "10000", "currency": "USDC", "network": "base"},
                 "description": "Scan any URL for x402 protocol compliance",
+            },
+            {
+                "path": "/health/{endpoint_id}",
+                "method": "GET",
+                "payment_required": True,
+                "price": {"amount": "1000", "currency": "USDC", "network": "base"},
+                "description": "Live on-demand health check for a registered service ($0.001)",
             },
         ],
     }
@@ -1886,7 +1926,7 @@ _SERVER_CARD_DATA = {
         },
         {
             "name": "x402_health",
-            "description": "Check the live health and uptime statistics of a specific x402 service. Returns current status (up/down/degraded), uptime percentage, average response latency, last check timestamp, and payment facilitator compatibility.",
+            "description": "Check the live health and uptime statistics of a specific x402 service. Costs $0.001 USDC per call. Returns current status (up/down/degraded), uptime percentage, average response latency, last check timestamp, and payment facilitator compatibility.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2239,7 +2279,7 @@ async def mcp_manifest() -> JSONResponse:
             },
             {
                 "name": "x402_health",
-                "description": "Check live health status of a specific x402 service. Free.",
+                "description": "Check live health status of a specific x402 service. Costs $0.001 USDC.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
