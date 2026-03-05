@@ -402,6 +402,17 @@ def _enrich_with_quality(entry: dict) -> dict:
     enriched["trust_score"] = _compute_trust_score_from_fields(enriched, stats)
     # Add facilitator compatibility (synchronous — uses precomputed index)
     enriched = _enrich_with_facilitator(enriched)
+    # Expose x402_config as a nested object for clean API consumption
+    if enriched.get("payment_address"):
+        enriched["x402_config"] = {
+            "payment_address": enriched.get("payment_address"),
+            "asset_contract": enriched.get("asset_contract"),
+            "x402_version": enriched.get("x402_version"),
+            "x402_network": enriched.get("x402_network"),
+            "verified_at": enriched.get("x402_metadata_verified_at"),
+        }
+    else:
+        enriched["x402_config"] = None
     return enriched
 
 # ---------------------------------------------------------------------------
@@ -991,7 +1002,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.5.0",
+    version="3.6.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.010 USDC on Base."
@@ -1059,7 +1070,7 @@ async def root(request: Request):
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.5.0",
+            "version": "3.6.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.010 USDC on Base."
@@ -1450,9 +1461,15 @@ async def verify_payment_address(url: str) -> JSONResponse:
     })
 
 
+
 @app.get("/scan")
 async def scan_endpoint(url: str) -> dict:
-    """Scan a URL for x402 protocol compliance. Free — no payment required."""
+    """Scan a URL for x402 protocol compliance. Free — no payment required.
+    
+    Returns compliance signals plus stored_config (what we have on record) and
+    live_config (what the service returned during this scan). Mismatch between
+    stored and live payment_address is a security signal.
+    """
     import httpx as _httpx
     import json as _json
 
@@ -1460,67 +1477,98 @@ async def scan_endpoint(url: str) -> dict:
     issues = []
     score = 0
 
+    # --- Step 1: Probe the URL (try GET first, then POST if no 402) ---
+    resp = None
+    method_used = "GET"
     try:
         async with _httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.get(url, headers={"Accept": "application/json"})
-
-            if resp.status_code == 402:
-                signals.append("✅ Returns HTTP 402 Payment Required")
-                score += 30
-            elif resp.status_code in (200, 401, 403):
-                issues.append(f"⚠️ Returns {resp.status_code}, not 402 — may require x402 header to trigger payment flow")
-                score += 5
+            get_resp = await client.get(url, headers={"Accept": "application/json"})
+            if get_resp.status_code == 402:
+                resp = get_resp
+                method_used = "GET"
+            elif get_resp.status_code == 405:
+                # Method not allowed — try POST
+                post_resp = await client.post(
+                    url,
+                    json={},
+                    headers={"Accept": "application/json", "Content-Type": "application/json"},
+                )
+                resp = post_resp
+                method_used = "POST"
             else:
-                issues.append(f"❌ Returns {resp.status_code} — unexpected response")
-
-            body = {}
-            try:
-                body = resp.json()
-            except Exception:
-                issues.append("⚠️ Response body is not valid JSON")
-
-            if body.get("x402Version"):
-                signals.append(f"✅ x402Version: {body['x402Version']}")
-                score += 20
-            else:
-                issues.append("❌ Missing x402Version field in response body")
-
-            accepts = body.get("accepts", [])
-            if accepts and isinstance(accepts, list) and len(accepts) > 0:
-                first = accepts[0]
-                if first.get("scheme") and first.get("network") and first.get("maxAmountRequired"):
-                    signals.append(f"✅ Valid accepts array — scheme={first.get('scheme')}, network={first.get('network')}, amount={first.get('maxAmountRequired')}")
-                    score += 20
-                else:
-                    issues.append("⚠️ accepts array present but malformed")
-                    score += 5
-            else:
-                issues.append("❌ Missing or empty accepts array")
-
-            usdc_base = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-            body_str = _json.dumps(body).lower()
-            if usdc_base.lower() in body_str:
-                signals.append("✅ USDC on Base contract address found")
-                score += 15
-            elif "base" in body_str and ("usdc" in body_str or "erc" in body_str):
-                signals.append("✅ Base network USDC referenced")
-                score += 10
-            else:
-                issues.append("⚠️ No USDC/Base contract address detected")
-
-            if "transferWithAuthorization" in _json.dumps(body) or "eip3009" in body_str or "eip-3009" in body_str:
-                signals.append("✅ EIP-3009 transferWithAuthorization referenced")
-                score += 15
-            elif resp.status_code == 402:
-                signals.append("ℹ️ EIP-3009 assumed (standard x402 flow)")
-                score += 8
-            else:
-                issues.append("⚠️ Could not confirm EIP-3009 compliance")
-
+                resp = get_resp
+                method_used = "GET"
     except _httpx.TimeoutException:
-        return {"url": url, "compliance_score": 0, "grade": "F — Unreachable", "signals": [], "issues": ["❌ Connection timed out (10s)"], "recommendation": "Service is unreachable."}
+        return {
+            "url": url, "compliance_score": 0, "grade": "F — Unreachable",
+            "signals": [], "issues": ["❌ Connection timed out (10s)"],
+            "recommendation": "Service is unreachable.",
+            "stored_config": None, "live_config": None, "config_mismatch": None,
+        }
     except Exception as e:
-        return {"url": url, "compliance_score": 0, "grade": "F — Error", "signals": [], "issues": [f"❌ Error: {e}"], "recommendation": "Could not connect."}
+        return {
+            "url": url, "compliance_score": 0, "grade": "F — Error",
+            "signals": [], "issues": [f"❌ Error: {e}"],
+            "recommendation": "Could not connect.",
+            "stored_config": None, "live_config": None, "config_mismatch": None,
+        }
+
+    # --- Step 2: Evaluate compliance signals ---
+    if resp.status_code == 402:
+        signals.append(f"✅ Returns HTTP 402 Payment Required (via {method_used})")
+        score += 30
+    elif resp.status_code in (200, 401, 403):
+        issues.append(f"⚠️ Returns {resp.status_code}, not 402 — may require x402 header to trigger payment flow")
+        score += 5
+    else:
+        issues.append(f"❌ Returns {resp.status_code} — unexpected response")
+
+    body = {}
+    try:
+        body = resp.json()
+    except Exception:
+        issues.append("⚠️ Response body is not valid JSON")
+
+    if body.get("x402Version"):
+        signals.append(f"✅ x402Version: {body['x402Version']}")
+        score += 20
+    else:
+        issues.append("❌ Missing x402Version field in response body")
+
+    accepts = body.get("accepts", [])
+    if accepts and isinstance(accepts, list) and len(accepts) > 0:
+        first = accepts[0]
+        if first.get("scheme") and first.get("network") and first.get("maxAmountRequired"):
+            signals.append(
+                f"✅ Valid accepts array — scheme={first.get('scheme')}, "
+                f"network={first.get('network')}, amount={first.get('maxAmountRequired')}"
+            )
+            score += 20
+        else:
+            issues.append("⚠️ accepts array present but malformed")
+            score += 5
+    else:
+        issues.append("❌ Missing or empty accepts array")
+
+    usdc_base = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    body_str = _json.dumps(body).lower()
+    if usdc_base.lower() in body_str:
+        signals.append("✅ USDC on Base contract address found")
+        score += 15
+    elif "base" in body_str and ("usdc" in body_str or "erc" in body_str):
+        signals.append("✅ Base network USDC referenced")
+        score += 10
+    else:
+        issues.append("⚠️ No USDC/Base contract address detected")
+
+    if "transferWithAuthorization" in _json.dumps(body) or "eip3009" in body_str or "eip-3009" in body_str:
+        signals.append("✅ EIP-3009 transferWithAuthorization referenced")
+        score += 15
+    elif resp.status_code == 402:
+        signals.append("ℹ️ EIP-3009 assumed (standard x402 flow)")
+        score += 8
+    else:
+        issues.append("⚠️ Could not confirm EIP-3009 compliance")
 
     if score >= 80:
         grade = "A — Fully x402 Compliant"
@@ -1538,7 +1586,77 @@ async def scan_endpoint(url: str) -> dict:
         grade = "F — Not x402 Compliant"
         recommendation = "Do not attempt autonomous payments."
 
-    return {"url": url, "compliance_score": score, "grade": grade, "signals": signals, "issues": issues, "recommendation": recommendation}
+    # --- Step 3: Extract live x402Config from the 402 response ---
+    live_config = None
+    if resp.status_code == 402 and isinstance(accepts, list) and len(accepts) > 0:
+        first = accepts[0]
+        pay_to = first.get("payTo") or first.get("pay_to")
+        network = first.get("network", "")
+        asset = first.get("asset") or first.get("asset_address")
+        x402_version = body.get("x402Version") or body.get("x402_version")
+        live_config = {
+            "payment_address": pay_to,
+            "asset_contract": asset,
+            "x402_version": str(x402_version) if x402_version is not None else None,
+            "x402_network": network or None,
+        }
+
+    # --- Step 4: Look up stored config from catalog ---
+    stored_config = None
+    matched_entry = None
+    normalized_url = url.rstrip("/")
+    for entry in _registry:
+        entry_url = entry.get("url", "").rstrip("/")
+        if entry_url == normalized_url or normalized_url.startswith(entry_url):
+            matched_entry = entry
+            pa = entry.get("payment_address")
+            if pa:
+                stored_config = {
+                    "payment_address": pa,
+                    "asset_contract": entry.get("asset_contract"),
+                    "x402_version": entry.get("x402_version"),
+                    "x402_network": entry.get("x402_network"),
+                    "verified_at": entry.get("x402_metadata_verified_at"),
+                }
+            break
+
+    # --- Step 5: Detect mismatch and update catalog if live data is fresh ---
+    config_mismatch = None
+    if live_config and live_config.get("payment_address"):
+        if stored_config and stored_config.get("payment_address"):
+            if live_config["payment_address"].lower() != stored_config["payment_address"].lower():
+                config_mismatch = {
+                    "field": "payment_address",
+                    "stored": stored_config["payment_address"],
+                    "live": live_config["payment_address"],
+                    "warning": "⚠️ Payment address has changed since last scan. Verify this is intentional before sending payment.",
+                }
+                issues.append(f"⚠️ Payment address mismatch: stored={stored_config['payment_address']} live={live_config['payment_address']}") 
+        # Auto-update the catalog entry with fresh metadata
+        if matched_entry is not None:
+            import datetime as _dt
+            matched_entry["payment_address"] = live_config["payment_address"]
+            if live_config.get("asset_contract"):
+                matched_entry["asset_contract"] = live_config["asset_contract"]
+            if live_config.get("x402_version"):
+                matched_entry["x402_version"] = live_config["x402_version"]
+            if live_config.get("x402_network"):
+                matched_entry["x402_network"] = live_config["x402_network"]
+            matched_entry["x402_metadata_verified_at"] = _dt.datetime.utcnow().isoformat() + "Z"
+            _save_registry(_registry)
+            signals.append("✅ x402 payment metadata stored in catalog")
+
+    return {
+        "url": url,
+        "compliance_score": score,
+        "grade": grade,
+        "signals": signals,
+        "issues": issues,
+        "recommendation": recommendation,
+        "live_config": live_config,
+        "stored_config": stored_config,
+        "config_mismatch": config_mismatch,
+    }
 
 
 @app.get("/v1/trust-providers")
@@ -1562,7 +1680,7 @@ _SERVER_CARD_DATA = {
     "serverInfo": {
         "name": "x402-discovery-mcp",
         "displayName": "x402 Service Discovery",
-        "version": "3.5.0",
+        "version": "3.6.0",
         "description": "The index for the x402 agent economy. Discover, route, and verify 251+ live x402-payable services across Base mainnet. Quality signals, health monitoring, trust attestations, and payment facilitator compatibility — everything an AI agent needs to pay its way through the web.",
         "homepage": "https://github.com/rplryan/x402-discovery-mcp",
         "icon": "https://raw.githubusercontent.com/rplryan/x402-discovery-mcp/main/icon.png"
