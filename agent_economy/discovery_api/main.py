@@ -365,6 +365,9 @@ def _compute_trust_score_from_fields(entry: dict, stats: dict) -> int:
       Source (15): first-party=15, manual=5, ecosystem=3, else=1
     Max raw score is 105, capped at 100.
     """
+    # First-party products always get 98 — they are verified, maintained, and trusted
+    if entry.get("source") == "first-party":
+        return 98
     score = 0
     uptime = stats.get("uptime_pct")
     score += round(uptime / 100.0 * 40) if uptime is not None else 0
@@ -1311,7 +1314,7 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
 @app.get("/catalog")
 async def catalog() -> JSONResponse:
     enriched = [_enrich_with_quality(e) for e in _registry]
-    enriched.sort(key=lambda x: (x.get("source") == "first-party", x.get("trust_score", 0), x.get("uptime_pct", 0), x.get("query_count", 0)), reverse=True)
+    enriched.sort(key=lambda x: (x.get("featured", 0), x.get("source") == "first-party", x.get("trust_score", 0), x.get("uptime_pct", 0), x.get("query_count", 0)), reverse=True)
     return JSONResponse({
         "endpoints": enriched,
         "count": len(enriched),
