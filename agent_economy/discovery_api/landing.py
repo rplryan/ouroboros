@@ -486,7 +486,7 @@ footer{
         <td><span class="method post">POST</span></td>
         <td><span class="endpoint-path">/scan</span></td>
         <td>Scan a URL for x402 compliance and trust score</td>
-        <td><span class="auth-free">Free</span></td>
+        <td><span class="auth-paid">$0.010 USDC (x402)</span></td>
       </tr>
       <tr>
         <td><span class="method post">POST</span></td>
@@ -510,7 +510,7 @@ footer{
         <td><span class="method get">GET</span></td>
         <td><span class="endpoint-path">/health/{id}</span></td>
         <td>Live health check for a registered service by ID</td>
-        <td><span class="auth-free">Free</span></td>
+        <td><span class="auth-paid">$0.001 USDC (x402)</span></td>
       </tr>
     </tbody>
   </table>
