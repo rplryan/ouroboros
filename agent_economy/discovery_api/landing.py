@@ -626,7 +626,7 @@ function trustColor(score) {
 
 function statusHtml(s) {
   if (!s) return '';
-  const up = s === 'up' || s === 'healthy' || s === 'ok';
+  const up = s === 'up' || s === 'healthy' || s === 'ok' || s === 'verified_up';
   const cls = up ? 'up' : 'down';
   const label = up ? '● online' : '○ offline';
   return `<span class="card-status ${cls}">${label}</span>`;
