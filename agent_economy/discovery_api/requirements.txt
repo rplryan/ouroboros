@@ -1,0 +1,11 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+requests==2.32.3
+httpx==0.28.1
+beautifulsoup4==4.13.3
+fastmcp>=2.3.1
+web3>=7.0.0
+eth-account>=0.13.0
+cryptography>=42.0.0
+PyJWT>=2.8.0
+python-dotenv>=1.0.0
