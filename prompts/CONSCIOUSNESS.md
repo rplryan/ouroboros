@@ -96,7 +96,7 @@ Update scratchpad `last_github_monitor_utc` after scheduling.
 ### 6. BASE wallet monitoring — every 4 hours
 Only if scratchpad `last_wallet_monitor_utc` is >4 hours ago.
 
-Wallet: `0xBceC11f20904a30fC4bAF70B85fc33b7A9294683` on Base mainnet (chain ID 8453)
+Wallet: `0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA` on Base mainnet (chain ID 8453)
 USDC contract on Base: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
 
 Check:
@@ -105,7 +105,7 @@ Check:
 - Native ETH balance
 
 Use BaseScan API (no key required for basic queries):
-`https://api.basescan.org/api?module=account&action=tokentx&contractaddress=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&address=0xBceC11f20904a30fC4bAF70B85fc33b7A9294683&sort=desc`
+`https://api.basescan.org/api?module=account&action=tokentx&contractaddress=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913&address=0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA&sort=desc`
 
 If any NEW incoming tx since last check: send_owner_message with amount and sender.
 Update scratchpad `last_wallet_monitor_utc` and `last_wallet_balance` after check.
