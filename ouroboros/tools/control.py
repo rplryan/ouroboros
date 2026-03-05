@@ -49,7 +49,11 @@ def _schedule_task(ctx: ToolContext, description: str, context: str = "", parent
         state_path = ctx.drive_root / "state" / "state.json"
         state_data = json.loads(state_path.read_text(encoding="utf-8"))
         spent_usd = float(state_data.get("spent_usd", 0.0))
-        total_budget = float(os.environ.get("OUROBOROS_BUDGET_USD", "1050.0"))
+        # Prefer total_budget_usd from state.json (updated by owner) over env var default
+        total_budget = float(
+            state_data.get("total_budget_usd") or
+            os.environ.get("OUROBOROS_BUDGET_USD", "1050.0")
+        )
         remaining = total_budget - spent_usd
         if remaining < 5.0:
             return (
