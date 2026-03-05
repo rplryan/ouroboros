@@ -362,7 +362,8 @@ def _compute_trust_score_from_fields(entry: dict, stats: dict) -> int:
       Latency (20): <200ms=20, <500ms=15, <1000ms=10, else=5, None=10
       Verification (20): checks>=10=20, >=3=10, >=1=5, 0=0
       Facilitator (10): compatible=10
-      Source (10): first-party=10, manual=8, ecosystem=6, else=4
+      Source (15): first-party=15, manual=5, ecosystem=3, else=1
+    Max raw score is 105, capped at 100.
     """
     score = 0
     uptime = stats.get("uptime_pct")
@@ -389,13 +390,13 @@ def _compute_trust_score_from_fields(entry: dict, stats: dict) -> int:
         score += 10
     source = entry.get("source", "")
     if source == "first-party":
-        score += 10
+        score += 15
     elif source == "manual":
-        score += 8
+        score += 5
     elif source == "ecosystem":
-        score += 6
+        score += 3
     else:
-        score += 4
+        score += 1
     return min(100, max(0, score))
 
 
@@ -829,10 +830,10 @@ def _search(
         keywords = q.lower().split()
         scored = [(e, _score_entry(e, keywords)) for e in results]
         scored = [(e, s) for e, s in scored if s > 0]
-        scored.sort(key=lambda x: (x[1], x[0].get("trust_score", 0), x[0].get("query_count", 0)), reverse=True)
+        scored.sort(key=lambda x: (x[0].get("source") == "first-party", x[1], x[0].get("trust_score", 0), x[0].get("query_count", 0)), reverse=True)
         results = [e for e, _ in scored]
     else:
-        results.sort(key=lambda e: (e.get("trust_score", 0), e.get("uptime_pct", 0), e.get("query_count", 0)), reverse=True)
+        results.sort(key=lambda e: (e.get("source") == "first-party", e.get("trust_score", 0), e.get("uptime_pct", 0), e.get("query_count", 0)), reverse=True)
 
     # Enrich with quality signals from SQLite
     enriched = [_enrich_with_quality(e) for e in results[:limit * 2]]
@@ -843,7 +844,8 @@ def _search(
         uptime = e.get("uptime_pct") or 0.0
         latency = e.get("avg_latency_ms") or 9999
         registered = e.get("registered_at", "")
-        return (-trust, -uptime, latency, [-ord(c) for c in registered[:10]])
+        featured = 1 if e.get("source") == "first-party" else 0
+        return (-featured, -trust, -uptime, latency, [-ord(c) for c in registered[:10]])
 
     enriched.sort(key=quality_sort_key)
     return enriched[:limit]
@@ -1309,7 +1311,7 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
 @app.get("/catalog")
 async def catalog() -> JSONResponse:
     enriched = [_enrich_with_quality(e) for e in _registry]
-    enriched.sort(key=lambda x: (x.get("trust_score", 0), x.get("uptime_pct", 0), x.get("query_count", 0)), reverse=True)
+    enriched.sort(key=lambda x: (x.get("source") == "first-party", x.get("trust_score", 0), x.get("uptime_pct", 0), x.get("query_count", 0)), reverse=True)
     return JSONResponse({
         "endpoints": enriched,
         "count": len(enriched),
