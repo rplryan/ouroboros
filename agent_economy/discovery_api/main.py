@@ -310,25 +310,30 @@ def _record_health(url: str, is_up: bool, latency_ms: int | None, http_status: i
 
 
 def _get_health_stats(url: str) -> dict:
-    cutoff_ts = time.time() - 7 * 86400
-    cutoff_str = datetime.fromtimestamp(cutoff_ts, tz=timezone.utc).isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute(
-            "SELECT is_up, latency_ms FROM endpoint_health "
-            "WHERE endpoint_url = ? AND checked_at >= ?",
-            (url, cutoff_str),
-        ).fetchall()
-    if not rows:
-        return {"uptime_pct": None, "avg_latency_ms": None, "total_checks": 0, "successful_checks": 0}
-    total = len(rows)
-    successful = sum(1 for r in rows if r[0])
-    latencies = [r[1] for r in rows if r[1] is not None]
-    return {
-        "uptime_pct": round(successful / total * 100, 1),
-        "avg_latency_ms": round(sum(latencies) / len(latencies)) if latencies else None,
-        "total_checks": total,
-        "successful_checks": successful,
-    }
+    _default = {"uptime_pct": None, "avg_latency_ms": None, "total_checks": 0, "successful_checks": 0}
+    try:
+        cutoff_ts = time.time() - 7 * 86400
+        cutoff_str = datetime.fromtimestamp(cutoff_ts, tz=timezone.utc).isoformat()
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute(
+                "SELECT is_up, latency_ms FROM endpoint_health "
+                "WHERE endpoint_url = ? AND checked_at >= ?",
+                (url, cutoff_str),
+            ).fetchall()
+        if not rows:
+            return _default
+        total = len(rows)
+        successful = sum(1 for r in rows if r[0])
+        latencies = [r[1] for r in rows if r[1] is not None]
+        return {
+            "uptime_pct": round(successful / total * 100, 1),
+            "avg_latency_ms": round(sum(latencies) / len(latencies)) if latencies else None,
+            "total_checks": total,
+            "successful_checks": successful,
+        }
+    except Exception as exc:
+        log.warning("_get_health_stats failed for %s: %s", url, exc)
+        return _default
 
 
 def _get_last_check(url: str) -> dict | None:
@@ -1372,13 +1377,25 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
 
 @app.get("/catalog")
 async def catalog() -> JSONResponse:
-    enriched = [_enrich_with_quality(e) for e in _registry]
-    enriched.sort(key=lambda x: (-x.get("featured", 0), -(1 if x.get("source") == "first-party" else 0), -x.get("trust_score", 0), -x.get("uptime_pct", 0), -x.get("query_count", 0)))
-    return JSONResponse({
-        "endpoints": enriched,
-        "count": len(enriched),
-        "retrieved_at": datetime.now(timezone.utc).isoformat(),
-    })
+    try:
+        enriched = []
+        for e in _registry:
+            try:
+                enriched.append(_enrich_with_quality(e))
+            except Exception as enrich_err:
+                # If enrichment fails, return the raw entry rather than crashing
+                log.warning("_enrich_with_quality failed for %s: %s", e.get("url","?"), enrich_err)
+                enriched.append(dict(e))
+        enriched.sort(key=lambda x: (-x.get("featured", 0), -(1 if x.get("source") == "first-party" else 0), -x.get("trust_score", 0), -x.get("uptime_pct", 0), -x.get("query_count", 0)))
+        return JSONResponse({
+            "endpoints": enriched,
+            "count": len(enriched),
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as exc:
+        import traceback
+        log.error("catalog route error: %s\n%s", exc, traceback.format_exc())
+        return JSONResponse({"error": str(exc), "traceback": traceback.format_exc()}, status_code=500)
 
 # ---------------------------------------------------------------------------
 # GET /mcp — free, MCP tool manifest
