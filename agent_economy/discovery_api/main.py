@@ -1568,45 +1568,8 @@ async def verify_payment_address(url: str) -> JSONResponse:
 
 
 
-@app.get("/scan")
-async def scan_endpoint(request: Request, url: str) -> JSONResponse:
-    """Scan a URL for x402 protocol compliance. Costs $0.010 USDC on Base.
-
-    Returns compliance signals plus stored_config (what we have on record) and
-    live_config (what the service returned during this scan). Mismatch between
-    stored and live payment_address is a security signal.
-    """
-    host = request.headers.get("host", "localhost")
-    resource_path = "/scan"
-    payment_header = request.headers.get("X-PAYMENT")
-
-    if not payment_header:
-        log.info("GET /scan — 402 (no payment) url=%r", url)
-        return JSONResponse(
-            status_code=402,
-            content=_payment_required_body(
-                host, resource_path, QUERY_PRICE_UNITS,
-                "x402 Compliance Scan — check any URL for x402 protocol compliance, trust score, and payment address verification",
-            ),
-        )
-
-    resource_url = f"https://{host}{resource_path}"
-    is_valid, payment_response = await verify_payment(
-        payment_header, resource_url, QUERY_PRICE_UNITS
-    )
-
-    if not is_valid:
-        log.warning("GET /scan — 402 (invalid payment) url=%r", url)
-        return JSONResponse(
-            status_code=402,
-            content=_payment_required_body(
-                host, resource_path, QUERY_PRICE_UNITS,
-                "x402 Compliance Scan — check any URL for x402 protocol compliance, trust score, and payment address verification",
-            ),
-        )
-
-    log.info("GET /scan — 200 (payment verified) url=%r", url)
-
+async def _do_scan(url: str) -> dict:
+    """Core scanning logic for x402 compliance. Returns a result dict."""
     import httpx as _httpx
     import json as _json
 
@@ -1636,25 +1599,19 @@ async def scan_endpoint(request: Request, url: str) -> JSONResponse:
                 resp = get_resp
                 method_used = "GET"
     except _httpx.TimeoutException:
-        resp_body = JSONResponse(content={
+        return {
             "url": url, "compliance_score": 0, "grade": "F — Unreachable",
             "signals": [], "issues": ["❌ Connection timed out (10s)"],
             "recommendation": "Service is unreachable.",
             "stored_config": None, "live_config": None, "config_mismatch": None,
-        })
-        if payment_response:
-            resp_body.headers["X-PAYMENT-RESPONSE"] = payment_response
-        return resp_body
+        }
     except Exception as e:
-        resp_body = JSONResponse(content={
+        return {
             "url": url, "compliance_score": 0, "grade": "F — Error",
             "signals": [], "issues": [f"❌ Error: {e}"],
             "recommendation": "Could not connect.",
             "stored_config": None, "live_config": None, "config_mismatch": None,
-        })
-        if payment_response:
-            resp_body.headers["X-PAYMENT-RESPONSE"] = payment_response
-        return resp_body
+        }
 
     # --- Step 2: Evaluate compliance signals ---
     if resp.status_code == 402:
@@ -1774,7 +1731,7 @@ async def scan_endpoint(request: Request, url: str) -> JSONResponse:
                     "live": live_config["payment_address"],
                     "warning": "⚠️ Payment address has changed since last scan. Verify this is intentional before sending payment.",
                 }
-                issues.append(f"⚠️ Payment address mismatch: stored={stored_config['payment_address']} live={live_config['payment_address']}") 
+                issues.append(f"⚠️ Payment address mismatch: stored={stored_config['payment_address']} live={live_config['payment_address']}")
         # Auto-update the catalog entry with fresh metadata
         if matched_entry is not None:
             import datetime as _dt
@@ -1789,7 +1746,7 @@ async def scan_endpoint(request: Request, url: str) -> JSONResponse:
             _save_registry(_registry)
             signals.append("✅ x402 payment metadata stored in catalog")
 
-    result = {
+    return {
         "url": url,
         "compliance_score": score,
         "grade": grade,
@@ -1800,6 +1757,47 @@ async def scan_endpoint(request: Request, url: str) -> JSONResponse:
         "stored_config": stored_config,
         "config_mismatch": config_mismatch,
     }
+
+
+@app.get("/scan")
+async def scan_endpoint(request: Request, url: str) -> JSONResponse:
+    """Scan a URL for x402 protocol compliance. Costs $0.010 USDC on Base.
+
+    Returns compliance signals plus stored_config (what we have on record) and
+    live_config (what the service returned during this scan). Mismatch between
+    stored and live payment_address is a security signal.
+    """
+    host = request.headers.get("host", "localhost")
+    resource_path = "/scan"
+    payment_header = request.headers.get("X-PAYMENT")
+
+    if not payment_header:
+        log.info("GET /scan — 402 (no payment) url=%r", url)
+        return JSONResponse(
+            status_code=402,
+            content=_payment_required_body(
+                host, resource_path, QUERY_PRICE_UNITS,
+                "x402 Compliance Scan — check any URL for x402 protocol compliance, trust score, and payment address verification",
+            ),
+        )
+
+    resource_url = f"https://{host}{resource_path}"
+    is_valid, payment_response = await verify_payment(
+        payment_header, resource_url, QUERY_PRICE_UNITS
+    )
+
+    if not is_valid:
+        log.warning("GET /scan — 402 (invalid payment) url=%r", url)
+        return JSONResponse(
+            status_code=402,
+            content=_payment_required_body(
+                host, resource_path, QUERY_PRICE_UNITS,
+                "x402 Compliance Scan — check any URL for x402 protocol compliance, trust score, and payment address verification",
+            ),
+        )
+
+    log.info("GET /scan — 200 (payment verified) url=%r", url)
+    result = await _do_scan(url)
     json_response = JSONResponse(content=result)
     if payment_response:
         json_response.headers["X-PAYMENT-RESPONSE"] = payment_response
