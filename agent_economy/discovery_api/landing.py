@@ -208,6 +208,7 @@ pre .flag{color:var(--yellow)}
 .card-status{font-size:0.72rem;color:var(--text-dim)}
 .card-status.up{color:var(--green)}
 .card-status.down{color:var(--red)}
+.card-status.pending{color:var(--text-dim)}
 .loadmore-wrap{text-align:center;margin-top:0.5rem}
 #load-more{display:none}
 .catalog-empty{
@@ -625,7 +626,9 @@ function trustColor(score) {
 }
 
 function statusHtml(s) {
-  if (!s) return '';
+  if (!s || s === 'unverified' || s === 'unknown' || s === 'pending') {
+    return `<span class="card-status pending">◌ pending check</span>`;
+  }
   const up = s === 'up' || s === 'healthy' || s === 'ok' || s === 'verified_up';
   const cls = up ? 'up' : 'down';
   const label = up ? '● online' : '○ offline';
