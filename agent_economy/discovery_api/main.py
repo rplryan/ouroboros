@@ -873,10 +873,10 @@ def _search(
         keywords = q.lower().split()
         scored = [(e, _score_entry(e, keywords)) for e in results]
         scored = [(e, s) for e, s in scored if s > 0]
-        scored.sort(key=lambda x: (x[0].get("source") == "first-party", x[1], x[0].get("trust_score", 0), x[0].get("query_count", 0)), reverse=True)
+        scored.sort(key=lambda x: (x[0].get("source") == "first-party", x[1], x[0].get("trust_score") or 0, x[0].get("query_count") or 0), reverse=True)
         results = [e for e, _ in scored]
     else:
-        results.sort(key=lambda e: (e.get("source") == "first-party", e.get("trust_score", 0), e.get("uptime_pct", 0), e.get("query_count", 0)), reverse=True)
+        results.sort(key=lambda e: (e.get("source") == "first-party", e.get("trust_score") or 0, e.get("uptime_pct") or 0, e.get("query_count") or 0), reverse=True)
 
     # Enrich with quality signals from SQLite
     enriched = [_enrich_with_quality(e) for e in results[:limit * 2]]
@@ -886,7 +886,7 @@ def _search(
         trust = e.get("trust_score") or 0.0
         uptime = e.get("uptime_pct") or 0.0
         latency = e.get("avg_latency_ms") or 9999
-        registered = e.get("registered_at", "")
+        registered = e.get("registered_at") or ""
         featured = 1 if e.get("source") == "first-party" else 0
         return (-featured, -trust, -uptime, latency, [-ord(c) for c in registered[:10]])
 
@@ -1386,7 +1386,7 @@ async def catalog() -> JSONResponse:
                 # If enrichment fails, return the raw entry rather than crashing
                 log.warning("_enrich_with_quality failed for %s: %s", e.get("url","?"), enrich_err)
                 enriched.append(dict(e))
-        enriched.sort(key=lambda x: (-x.get("featured", 0), -(1 if x.get("source") == "first-party" else 0), -x.get("trust_score", 0), -x.get("uptime_pct", 0), -x.get("query_count", 0)))
+        enriched.sort(key=lambda x: (-(x.get("featured") or 0), -(1 if x.get("source") == "first-party" else 0), -(x.get("trust_score") or 0), -(x.get("uptime_pct") or 0), -(x.get("query_count") or 0)))
         return JSONResponse({
             "endpoints": enriched,
             "count": len(enriched),
