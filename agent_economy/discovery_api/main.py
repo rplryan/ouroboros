@@ -362,8 +362,8 @@ def _compute_trust_score_from_fields(entry: dict, stats: dict) -> int:
       Latency (20): <200ms=20, <500ms=15, <1000ms=10, else=5, None=10
       Verification (20): checks>=10=20, >=3=10, >=1=5, 0=0
       Facilitator (10): compatible=10
-      Source (15): first-party=15, manual=5, ecosystem=3, else=1
-    Max raw score is 105, capped at 100.
+      Source (20): first-party=20, manual=5, ecosystem=3, else=1
+    Max raw score is 110, capped at 100.
     """
     # First-party products always get 98 — they are verified, maintained, and trusted
     if entry.get("source") == "first-party":
@@ -393,7 +393,7 @@ def _compute_trust_score_from_fields(entry: dict, stats: dict) -> int:
         score += 10
     source = entry.get("source", "")
     if source == "first-party":
-        score += 15
+        score += 20
     elif source == "manual":
         score += 5
     elif source == "ecosystem":
@@ -499,6 +499,40 @@ def _load_registry() -> list[dict]:
         with seed_path.open() as fh:
             return json.load(fh)
     return []
+
+
+def _enforce_first_party_from_seed() -> None:
+    """Overwrite first-party entries in the live registry with authoritative data from seed.
+
+    This ensures that regardless of what was registered via POST /register,
+    first-party products always have correct descriptions, trust scores, and featured flags.
+    """
+    global _registry
+    seed_path = REGISTRY_PATH.parent / "registry_seed.json"
+    if not seed_path.exists():
+        return
+    try:
+        with seed_path.open() as fh:
+            seed_entries = json.load(fh)
+    except Exception:
+        return
+
+    seed_fp = {e["url"]: e for e in seed_entries if e.get("source") == "first-party"}
+    if not seed_fp:
+        return
+
+    updated = 0
+    # Remove old first-party entries (they may have stale data from POST /register)
+    _registry = [e for e in _registry if e.get("url") not in seed_fp]
+    # Re-add authoritative first-party entries
+    for entry in seed_entries:
+        if entry.get("source") == "first-party":
+            migrated = _migrate_entry(entry)
+            _registry.insert(0, migrated)
+            updated += 1
+
+    log.info("Enforced %d first-party entries from seed", updated)
+    _save_registry(_registry)
 
 
 def _save_registry(entries: list[dict]) -> None:
@@ -990,6 +1024,7 @@ async def _app_lifespan(app: FastAPI):
     """Application lifespan — starts background tasks and MCP session manager."""
     init_db()
     log.info("SQLite health DB initialized at %s", DB_PATH)
+    _enforce_first_party_from_seed()  # Always use authoritative seed data for first-party products
     health_task = asyncio.create_task(_background_health_checker())
     scraper_task = asyncio.create_task(_background_scraper())
     log.info("Background health checker started (interval=%ds)", HEALTH_CHECK_INTERVAL_SECS)
@@ -1314,7 +1349,7 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
 @app.get("/catalog")
 async def catalog() -> JSONResponse:
     enriched = [_enrich_with_quality(e) for e in _registry]
-    enriched.sort(key=lambda x: (x.get("featured", 0), x.get("source") == "first-party", x.get("trust_score", 0), x.get("uptime_pct", 0), x.get("query_count", 0)), reverse=True)
+    enriched.sort(key=lambda x: (-x.get("featured", 0), -(1 if x.get("source") == "first-party" else 0), -x.get("trust_score", 0), -x.get("uptime_pct", 0), -x.get("query_count", 0)))
     return JSONResponse({
         "endpoints": enriched,
         "count": len(enriched),
