@@ -613,6 +613,7 @@ def _migrate_entry(entry: dict) -> dict:
 
 
 _registry: list[dict] = [_migrate_entry(e) for e in _load_registry()]
+init_db()  # Ensure DB tables exist before any request can hit DB-dependent routes
 
 
 async def _extract_x402_payment_metadata(url: str) -> dict:
@@ -1024,7 +1025,7 @@ async def _app_lifespan(app: FastAPI):
     """Application lifespan — starts background tasks and MCP session manager."""
     init_db()
     log.info("SQLite health DB initialized at %s", DB_PATH)
-    _enforce_first_party_from_seed()  # Always use authoritative seed data for first-party products
+    _enforce_first_party_from_seed()  # Runs at startup: always use authoritative seed data for first-party products
     health_task = asyncio.create_task(_background_health_checker())
     scraper_task = asyncio.create_task(_background_scraper())
 
