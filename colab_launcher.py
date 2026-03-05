@@ -301,8 +301,11 @@ def _schedule_overdue_recurring_tasks() -> None:
         return  # No owner yet — skip
 
     # Budget gate: don't schedule if remaining < $15
+    # Use total_budget_usd from state.json (updated by owner) rather than the
+    # TOTAL_BUDGET_LIMIT env var (which can be stale between sessions).
     spent = float(st.get("spent_usd", 0))
-    remaining = TOTAL_BUDGET_LIMIT - spent
+    total_budget = float(st.get("total_budget_usd", TOTAL_BUDGET_LIMIT))
+    remaining = total_budget - spent
     if remaining < 15.0:
         log.info("Startup scheduler: skipping — budget remaining $%.2f < $15", remaining)
         return
