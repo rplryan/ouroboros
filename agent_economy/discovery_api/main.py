@@ -443,6 +443,17 @@ async def _background_health_checker() -> None:
                 reg_entry["health_status"] = _compute_health_status(stats, last)
                 stats_for_ts = _get_health_stats(reg_entry.get("url", ""))
                 reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, stats_for_ts)
+                # Refresh payment metadata once every 24h
+                last_meta = reg_entry.get("x402_metadata_verified_at")
+                meta_age_h = (
+                    (datetime.now(timezone.utc) - datetime.fromisoformat(last_meta)).total_seconds() / 3600
+                    if last_meta else 999
+                )
+                if meta_age_h > 24:
+                    meta = await _extract_x402_payment_metadata(url)
+                    if meta:
+                        reg_entry.update(meta)
+                        reg_entry["x402_metadata_verified_at"] = datetime.now(timezone.utc).isoformat()
         _save_registry(_registry)
         log.info("Background health check complete")
 
@@ -526,10 +537,53 @@ def _migrate_entry(entry: dict) -> dict:
             f'resp = requests.get("{entry.get("url", "")}")\n'
             f'# Returns 402 with payment info: {price_units} USDC micro-units'
         )
+    entry.setdefault("payment_address", None)
+    entry.setdefault("x402_version", None)
+    entry.setdefault("x402_network", None)
+    entry.setdefault("asset_contract", None)
+    entry.setdefault("x402_metadata_verified_at", None)
     return entry
 
 
 _registry: list[dict] = [_migrate_entry(e) for e in _load_registry()]
+
+
+async def _extract_x402_payment_metadata(url: str) -> dict:
+    """
+    Probe a URL and extract payment metadata from a 402 response.
+    Returns a dict with keys: payment_address, x402_version, x402_network, asset_contract.
+    Returns empty dict if no 402 or metadata can't be parsed.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"Accept": "application/json"})
+        if resp.status_code != 402:
+            return {}
+        try:
+            body = resp.json()
+        except Exception:
+            return {}
+        accepts = body.get("accepts", [])
+        if not accepts or not isinstance(accepts, list):
+            return {}
+        first = accepts[0]
+        pay_to = first.get("payTo") or first.get("pay_to")
+        network = first.get("network", "")
+        asset = first.get("asset") or first.get("asset_address")
+        x402_version = body.get("x402Version") or body.get("x402_version")
+        result = {}
+        if pay_to:
+            result["payment_address"] = pay_to
+        if x402_version is not None:
+            result["x402_version"] = str(x402_version)
+        if network:
+            result["x402_network"] = network
+        if asset:
+            result["asset_contract"] = asset
+        return result
+    except Exception:
+        return {}
+
 
 # ---------------------------------------------------------------------------
 # x402 payment verification
@@ -937,7 +991,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.4.0",
+    version="3.5.0",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.010 USDC on Base."
@@ -1002,7 +1056,7 @@ async def root(request: Request):
     return JSONResponse(
         {
             "service": "x402 Service Discovery API",
-            "version": "3.4.0",
+            "version": "3.5.0",
             "description": (
                 "Discover x402-payable endpoints with quality signals. "
                 "Each query costs $0.010 USDC on Base."
@@ -1151,6 +1205,13 @@ async def register(body: RegisterRequest) -> JSONResponse:
     }
     _registry.append(entry)
     _save_registry(_registry)
+
+    # Attempt to capture payment metadata immediately
+    meta = await _extract_x402_payment_metadata(body.url)
+    if meta:
+        entry.update(meta)
+        entry["x402_metadata_verified_at"] = datetime.now(timezone.utc).isoformat()
+        _save_registry(_registry)
 
     log.info("POST /register — new endpoint id=%s name=%r", entry["id"], entry["name"])
     return JSONResponse(status_code=201, content={"registered": True, "id": entry["id"], "entry": entry})
@@ -1336,6 +1397,56 @@ async def facilitator_check(
     })
 
 
+@app.get("/verify-payment-address")
+async def verify_payment_address(url: str) -> JSONResponse:
+    """
+    Cross-check a service's live x402 payment address against what's stored in the catalog.
+
+    Use this before sending a payment to verify the payment address hasn't changed.
+    Returns the stored address, live address, and whether they match.
+    """
+    # Find in registry
+    entry = next((e for e in _registry if e.get("url") == url), None)
+
+    # Get live metadata
+    live_meta = await _extract_x402_payment_metadata(url)
+
+    stored_address = entry.get("payment_address") if entry else None
+    live_address = live_meta.get("payment_address")
+
+    if not live_address:
+        return JSONResponse(status_code=422, content={
+            "url": url,
+            "error": "Service did not return a 402 response with parseable payment metadata",
+            "in_catalog": entry is not None,
+        })
+
+    match = (stored_address == live_address) if stored_address else None
+
+    # If in catalog and metadata changed, update it
+    if entry and live_meta:
+        entry.update(live_meta)
+        entry["x402_metadata_verified_at"] = datetime.now(timezone.utc).isoformat()
+        _save_registry(_registry)
+
+    return JSONResponse({
+        "url": url,
+        "in_catalog": entry is not None,
+        "stored_payment_address": stored_address,
+        "live_payment_address": live_address,
+        "payment_address_match": match,
+        "live_x402_version": live_meta.get("x402_version"),
+        "live_x402_network": live_meta.get("x402_network"),
+        "live_asset_contract": live_meta.get("asset_contract"),
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+        "security_note": (
+            "MISMATCH — do not send payment, verify with service operator"
+            if match is False
+            else ("MATCH — payment address verified" if match else "NOT PREVIOUSLY STORED — first verification, now cached")
+        ),
+    })
+
+
 @app.get("/scan")
 async def scan_endpoint(url: str) -> dict:
     """Scan a URL for x402 protocol compliance. Free — no payment required."""
@@ -1448,7 +1559,7 @@ _SERVER_CARD_DATA = {
     "serverInfo": {
         "name": "x402-discovery-mcp",
         "displayName": "x402 Service Discovery",
-        "version": "3.4.0",
+        "version": "3.5.0",
         "description": "The index for the x402 agent economy. Discover, route, and verify 251+ live x402-payable services across Base mainnet. Quality signals, health monitoring, trust attestations, and payment facilitator compatibility — everything an AI agent needs to pay its way through the web.",
         "homepage": "https://github.com/rplryan/x402-discovery-mcp",
         "icon": "https://raw.githubusercontent.com/rplryan/x402-discovery-mcp/main/icon.png"
