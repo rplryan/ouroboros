@@ -659,7 +659,7 @@ def _payment_required_body(
     """
     entry: dict = {
         "scheme": "exact",
-        "network": "eip155:8453",
+        "network": "base",
         "maxAmountRequired": amount,
         "resource": f"https://{host}{resource_path}",
         "description": description,
@@ -671,8 +671,39 @@ def _payment_required_body(
     }
     if output_schema is not None:
         entry["outputSchema"] = output_schema
+        # Build extensions.bazaar from outputSchema for CDP Bazaar auto-indexing
+        entry["extensions"] = {
+            "bazaar": {
+                "info": output_schema,
+                "schema": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                        "input": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string", "const": "http"},
+                                "method": {"type": "string", "enum": ["GET", "POST"]},
+                                "queryParams": {"type": "object"},
+                                "discoverable": {"type": "boolean"},
+                            },
+                            "required": ["type"],
+                        },
+                        "output": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string"},
+                                "example": {"type": "object"},
+                            },
+                            "required": ["type"],
+                        },
+                    },
+                    "required": ["input"],
+                },
+            }
+        }
     body: dict = {
-        "x402Version": 2,
+        "x402Version": 1,
         "accepts": [entry],
     }
     return body
@@ -1012,7 +1043,8 @@ async def discover(
         "input": {
             "type": "http",
             "method": "GET",
-            "queryParams": {"q": "ai data", "category": "data", "limit": "10"}
+            "queryParams": {"q": "ai data", "category": "data", "limit": "10"},
+            "discoverable": True,
         },
         "output": {
             "type": "json",
