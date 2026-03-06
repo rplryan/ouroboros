@@ -738,7 +738,7 @@ async def verify_payment(
         # Extract payment info
         scheme = data.get('scheme', '')
         network = data.get('network', '')
-        if scheme != 'exact' or network != 'eip155:8453':
+        if scheme != 'exact' or network not in ('eip155:8453', 'base'):
             return False, ''
         
         payload = data.get('payload', {})
@@ -828,10 +828,15 @@ async def verify_payment(
         try:
             settle_payload = {
                 "x402Version": 1,
-                "paymentPayload": data,
+                "paymentPayload": {
+                    "x402Version": 1,
+                    "scheme": data.get("scheme", "exact"),
+                    "network": data.get("network", "eip155:8453"),
+                    "payload": data.get("payload", {}),
+                },
                 "paymentRequirements": {
                     "scheme": "exact",
-                    "network": "eip155:8453",
+                    "network": "base",
                     "maxAmountRequired": str(expected_amount),
                     "resource": resource_url,
                     "description": "x402Scout Discovery API",
