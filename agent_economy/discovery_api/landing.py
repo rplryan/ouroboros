@@ -610,10 +610,10 @@ async function fetchCatalog() {
 
 async function fetchNavCount() {
   try {
-    const res = await fetch('/catalog?limit=1');
+    const res = await fetch('/stats');
     if (!res.ok) return null;
     const data = await res.json();
-    return data.total || data.count || null;
+    return data.total_services || data.active_services || null;
   } catch { return null; }
 }
 
@@ -789,9 +789,18 @@ function showResult(el, type, msg) {
 
 // ── INIT ──
 (async function init() {
-  // Nav count (quick)
+  // Stats count (quick, from /stats — no catalog needed)
+  const navCountPromise = fetchNavCount();
   updateNavCount();
   setInterval(updateNavCount, 30000);
+
+  // Update stat-services immediately from /stats without waiting for catalog
+  navCountPromise.then(count => {
+    if (count != null) {
+      const el = document.getElementById('stat-services');
+      if (el) el.textContent = count.toLocaleString();
+    }
+  });
 
   // Full catalog
   const services = await fetchCatalog();
@@ -812,9 +821,16 @@ function showResult(el, type, msg) {
     document.getElementById('cards-container').innerHTML =
       '<div class="catalog-empty">No services in registry yet — be the first to register!</div>';
     // Set fallback stats
-    ['stat-services','stat-categories','stat-trust'].forEach(id => {
+    ['stat-categories','stat-trust'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.textContent = '0';
+    });
+    // stat-services already set from /stats above; only reset if /stats also returned nothing
+    navCountPromise.then(count => {
+      if (count == null) {
+        const el = document.getElementById('stat-services');
+        if (el) el.textContent = '0';
+      }
     });
   }
 

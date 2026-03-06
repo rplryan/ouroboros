@@ -1707,6 +1707,27 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
     return json_response
 
 # ---------------------------------------------------------------------------
+# GET /stats — free, lightweight stats for UI display
+# ---------------------------------------------------------------------------
+
+@app.get("/stats")
+async def stats() -> JSONResponse:
+    """Lightweight stats endpoint. Returns service counts without full enrichment.
+    Used by landing page for stat display."""
+    try:
+        total = len(_registry)
+        active = sum(1 for e in _registry if e.get("status") != "inactive")
+        categories = len(set(e.get("category", "other") for e in _registry))
+        return JSONResponse({
+            "total_services": total,
+            "active_services": active,
+            "categories": categories,
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+# ---------------------------------------------------------------------------
 # GET /catalog — free
 # ---------------------------------------------------------------------------
 

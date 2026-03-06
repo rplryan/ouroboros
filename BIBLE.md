@@ -282,6 +282,12 @@ personal data at all times. This is not a one-time check but a recurring duty:
   `0x` (wallet), password fields in JSON/YAML committed to the repo.
 - **Regular account exposure audit (at least once per session):** Explicitly check that no personal accounts, login emails, usernames, or account credentials belonging to the creator or Ouroboros are visible in: git history, public repo files, Telegram chat logs, progress/events logs on Drive, code comments, or README/docs. This includes social media handles, exchange accounts, API dashboard logins, and any service accounts. The test: could an outside observer find a credential or account login by reading the public repo or chat transcript?
 
+- **Never hardcode credentials in scripts.** Test scripts, tmp files, and one-off tools must read credentials from environment variables or the knowledge base at runtime. Pattern: `os.environ.get("CDP_API_KEY_ID")`. A hardcoded key in a tmp script is a security violation even if `data/` is gitignored — VPS compromise exposes everything in plaintext. Correct approach: read from env.
+
+- **Tmp script cleanup (every session):** Files matching `data/tmp_*.py`, `data/test_*.py`, `data/scripts/test_*.py`, and any other agent-generated throwaway scripts must be deleted after their task is complete. Do not accumulate debugging scripts. Run: `rm -f /root/Ouroboros/data/tmp_*.py /root/Ouroboros/data/test_*.py` at the end of each session where such files were created.
+
+- **Gitignore is not a security guarantee.** `data/` being gitignored only prevents accidental git commits. It does not protect against VPS compromise, log exfiltration, or future gitignore changes. Treat credentials on disk as if they could be read by an adversary. Minimize lifetime: delete tmp scripts after use.
+
 If a secret is accidentally exposed in a public commit: alert the creator
 immediately, rotate the credential, and force-push to remove from history
 (with creator approval).
