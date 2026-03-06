@@ -8,4 +8,5 @@ web3>=7.0.0
 eth-account>=0.13.0
 cryptography>=42.0.0
 PyJWT>=2.8.0
+cdp-sdk>=1.0.0
 python-dotenv>=1.0.0

@@ -103,6 +103,34 @@ FACILITATOR_URL: str = os.getenv(
 CDP_API_KEY_ID: str = os.getenv("CDP_API_KEY_ID", "")
 CDP_API_KEY_SECRET: str = os.getenv("CDP_API_KEY_SECRET", "")
 CDP_SETTLE_URL: str = "https://api.cdp.coinbase.com/platform/v2/x402/settle"
+
+# Output schema for /discover — used in 402 responses and CDP settle for Bazaar indexing
+DISCOVER_OUTPUT_SCHEMA: dict = {
+    "input": {
+        "type": "http",
+        "method": "GET",
+        "queryParams": {"q": "ai data", "category": "data", "limit": "10"},
+        "discoverable": True,
+    },
+    "output": {
+        "type": "json",
+        "example": {
+            "results": [
+                {
+                    "id": "abc123",
+                    "name": "Example x402 Service",
+                    "url": "https://example.com/api",
+                    "category": "data",
+                    "trust_score": 85,
+                    "price_usd": 0.01,
+                    "description": "An example x402-enabled data service",
+                }
+            ],
+            "total": 1,
+        },
+    },
+}
+
 PAYAI_FACILITATOR_URL: str = "https://facilitator.payai.network/verify"
 PAYAI_REGISTER_URL: str = "https://facilitator.payai.network/register-merchant"
 
@@ -723,6 +751,7 @@ async def verify_payment(
     payment_header: str,
     resource_url: str,
     amount: str,
+    output_schema: dict | None = None,
 ) -> tuple[bool, str]:
     """Verify x402 payment locally using EIP-712 signature verification."""
     import base64
@@ -826,17 +855,20 @@ async def verify_payment(
 
         # Settle via CDP facilitator — submits on-chain USDC transfer + triggers Bazaar indexing
         try:
+            # Normalize network name: CDP settle requires consistent CAIP-2 format
+            incoming_network = data.get("network", "eip155:8453")
+            canonical_network = "eip155:8453" if incoming_network in ("base", "eip155:8453") else incoming_network
             settle_payload = {
                 "x402Version": 1,
                 "paymentPayload": {
                     "x402Version": 1,
                     "scheme": data.get("scheme", "exact"),
-                    "network": data.get("network", "eip155:8453"),
+                    "network": canonical_network,
                     "payload": data.get("payload", {}),
                 },
                 "paymentRequirements": {
                     "scheme": "exact",
-                    "network": "base",
+                    "network": canonical_network,
                     "maxAmountRequired": str(expected_amount),
                     "resource": resource_url,
                     "description": "x402Scout Discovery API",
@@ -844,7 +876,7 @@ async def verify_payment(
                     "payTo": WALLET_ADDRESS,
                     "maxTimeoutSeconds": 60,
                     "asset": USDC_CONTRACT,
-                    "outputSchema": None,
+                    "outputSchema": output_schema,
                     "extra": {"name": "USD Coin", "version": "2"},
                 }
             }
@@ -1422,32 +1454,6 @@ async def discover(
     resource_path = "/discover"
     payment_header = request.headers.get("X-PAYMENT")
 
-    _discover_output_schema = {
-        "input": {
-            "type": "http",
-            "method": "GET",
-            "queryParams": {"q": "ai data", "category": "data", "limit": "10"},
-            "discoverable": True,
-        },
-        "output": {
-            "type": "json",
-            "example": {
-                "results": [
-                    {
-                        "id": "abc123",
-                        "name": "Example x402 Service",
-                        "url": "https://example.com/api",
-                        "category": "data",
-                        "trust_score": 85,
-                        "price_usd": 0.01,
-                        "description": "An example x402-enabled data service"
-                    }
-                ],
-                "total": 1
-            }
-        }
-    }
-
     if not payment_header:
         log.info("GET /discover — 402 (no payment) q=%r category=%r", q, category)
         return JSONResponse(
@@ -1455,13 +1461,13 @@ async def discover(
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Service Discovery — search and filter 646+ live x402-enabled services by keyword, category, and trust score",
-                output_schema=_discover_output_schema,
+                output_schema=DISCOVER_OUTPUT_SCHEMA,
             ),
         )
 
     resource_url = f"https://{host}{resource_path}"
     is_valid, payment_response = await verify_payment(
-        payment_header, resource_url, QUERY_PRICE_UNITS
+        payment_header, resource_url, QUERY_PRICE_UNITS, output_schema=DISCOVER_OUTPUT_SCHEMA
     )
 
     if not is_valid:
@@ -1471,7 +1477,7 @@ async def discover(
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Service Discovery — search and filter 646+ live x402-enabled services by keyword, category, and trust score",
-                output_schema=_discover_output_schema,
+                output_schema=DISCOVER_OUTPUT_SCHEMA,
             ),
         )
 
