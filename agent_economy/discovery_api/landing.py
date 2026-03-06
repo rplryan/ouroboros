@@ -533,14 +533,16 @@ footer{
       <label>Category</label>
       <select id="reg-category">
         <option value="">Select a category</option>
-        <option value="data">Data</option>
-        <option value="utility">Utility</option>
         <option value="agent">Agent</option>
-        <option value="generation">Generation</option>
-        <option value="translation">Translation</option>
+        <option value="compute">Compute</option>
+        <option value="data">Data</option>
         <option value="finance">Finance</option>
+        <option value="generation">Generation</option>
+        <option value="research">Research</option>
         <option value="search">Search</option>
         <option value="storage">Storage</option>
+        <option value="translation">Translation</option>
+        <option value="utility">Utility</option>
         <option value="other">Other</option>
       </select>
     </div>
@@ -774,7 +776,11 @@ async function submitRegistration() {
       document.getElementById('reg-name').value = '';
       document.getElementById('reg-category').value = '';
     } else {
-      showResult(resultEl, 'error', data.detail || data.error || 'Registration failed.');
+      const rawDetail = data.detail || data.error || 'Registration failed.';
+      const errMsg = Array.isArray(rawDetail)
+        ? rawDetail.map(e => (e.msg || JSON.stringify(e)) + (e.loc && e.loc.length ? ' (' + e.loc.join('.') + ')' : '')).join('; ')
+        : (typeof rawDetail === 'string' ? rawDetail : JSON.stringify(rawDetail));
+      showResult(resultEl, 'error', errMsg);
     }
   } catch (e) {
     showResult(resultEl, 'error', 'Network error — please try again.');

@@ -1185,7 +1185,7 @@ def _search(
 # Pydantic models
 # ---------------------------------------------------------------------------
 
-VALID_CATEGORIES = {"research", "data", "compute", "agent", "utility"}
+VALID_CATEGORIES = {"research", "data", "compute", "agent", "utility", "generation", "translation", "finance", "search", "storage", "other"}
 
 CAPABILITY_VOCABULARY = {
     "research", "data", "compute", "monitoring", "verification",
