@@ -853,31 +853,27 @@ async def verify_payment(
 
         # Settle via CDP facilitator (api.cdp.coinbase.com — supports Base mainnet).
         # x402.org/facilitator is testnet-only; do NOT use it here.
-        # CDP settle executes the on-chain transferWithAuthorization and triggers Bazaar indexing.
+        # CDP settle executes the on-chain transferWithAuthorization.
+        # Uses x402 V2 payload format: paymentPayload has 'accepted' field, no top-level scheme/network.
         try:
-            incoming_network = data.get("network", "eip155:8453")
-            canonical_network = "eip155:8453" if incoming_network in ("base", "eip155:8453") else incoming_network
+            # Build V2 PaymentRequirements (uses 'amount', not 'maxAmountRequired')
+            v2_reqs = {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "asset": USDC_CONTRACT,
+                "amount": str(expected_amount),
+                "payTo": WALLET_ADDRESS,
+                "maxTimeoutSeconds": 60,
+                "extra": {"name": "USD Coin", "version": "2"},
+            }
             settle_payload = {
-                "x402Version": 1,
+                "x402Version": 2,
                 "paymentPayload": {
-                    "x402Version": 1,
-                    "scheme": data.get("scheme", "exact"),
-                    "network": canonical_network,
+                    "x402Version": 2,
                     "payload": data.get("payload", {}),
+                    "accepted": v2_reqs,
                 },
-                "paymentRequirements": {
-                    "scheme": "exact",
-                    "network": canonical_network,
-                    "maxAmountRequired": str(expected_amount),
-                    "resource": resource_url,
-                    "description": "x402Scout Discovery API",
-                    "mimeType": "application/json",
-                    "payTo": WALLET_ADDRESS,
-                    "maxTimeoutSeconds": 60,
-                    "asset": USDC_CONTRACT,
-                    "outputSchema": DISCOVER_OUTPUT_SCHEMA,
-                    "extra": {"name": "USD Coin", "version": "2"},
-                }
+                "paymentRequirements": v2_reqs,
             }
             settle_headers = {"Content-Type": "application/json"}
             jwt_token = _generate_cdp_jwt("POST", "/platform/v2/x402/settle")
@@ -891,8 +887,8 @@ async def verify_payment(
                 )
                 if settle_resp.status_code == 200:
                     settle_data = settle_resp.json()
-                    tx_hash = settle_data.get("txHash") or settle_data.get("transaction", {}).get("hash", "")
-                    log.info("CDP settle success: txHash=%s resource=%s", tx_hash, resource_url)
+                    tx_hash = settle_data.get("transaction", "")
+                    log.info("CDP settle success: tx=%s resource=%s", tx_hash, resource_url)
                     payment_response = base64.b64encode(_json.dumps({
                         'success': True,
                         'payer': payer_address,
