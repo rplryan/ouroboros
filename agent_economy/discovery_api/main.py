@@ -815,10 +815,7 @@ async def verify_payment(
         # All checks passed
         log.info('Payment verified: %s paid %s USDC', payer_address, signed_amount/1e6)
 
-        # Call x402.org/facilitator/settle to execute the on-chain transfer.
-        # The payment header is a signed EIP-3009 TransferWithAuthorization —
-        # the facilitator calls transferWithAuthorization on the USDC contract,
-        # which moves the USDC on-chain. No CDP auth required for this step.
+        # Default payment response (overridden if CDP settle succeeds)
         payment_response = base64.b64encode(_json.dumps({
             'success': True,
             'payer': payer_address,
@@ -826,50 +823,60 @@ async def verify_payment(
             'network': 'eip155:8453'
         }).encode()).decode()
 
+        # Settle via CDP facilitator (api.cdp.coinbase.com — supports Base mainnet).
+        # x402.org/facilitator is testnet-only; do NOT use it here.
+        # CDP settle executes the on-chain transferWithAuthorization and triggers Bazaar indexing.
         try:
-            from x402.http.facilitator_client import HTTPFacilitatorClientSync
-            from x402.http.facilitator_client_base import FacilitatorConfig
-            from x402.schemas.v1 import PaymentPayloadV1, PaymentRequirementsV1
-
-            # Build facilitator client with correct FacilitatorConfig
-            _fc = HTTPFacilitatorClientSync(
-                FacilitatorConfig(url="https://x402.org/facilitator")
-            )
-
-            # PaymentPayloadV1: x402_version, scheme, network, payload (raw dict)
-            _pp = PaymentPayloadV1(
-                x402_version=1,
-                scheme="exact",
-                network="eip155:8453",
-                payload=payload,
-            )
-            # PaymentRequirementsV1: max_amount_required MUST be str
-            _pr = PaymentRequirementsV1(
-                scheme="exact",
-                network="eip155:8453",
-                max_amount_required=str(int(amount)),
-                resource=resource_url,
-                description="x402Scout Discovery API — service discovery",
-                mime_type="application/json",
-                pay_to=WALLET_ADDRESS,
-                max_timeout_seconds=60,
-                asset=USDC_CONTRACT,
-                extra={"name": "USD Coin", "version": "2"},
-            )
-
-            settle_result = _fc.settle(_pp, _pr)
-            tx_hash = getattr(settle_result, "tx_hash", "") or getattr(settle_result, "transaction", "") or ""
-            log.info("Facilitator settle success: txHash=%s", tx_hash)
-            payment_response = base64.b64encode(_json.dumps({
-                "success": True,
-                "payer": payer_address,
-                "amount": signed_amount,
-                "network": "eip155:8453",
-                "txHash": tx_hash,
-            }).encode()).decode()
+            incoming_network = data.get("network", "eip155:8453")
+            canonical_network = "eip155:8453" if incoming_network in ("base", "eip155:8453") else incoming_network
+            settle_payload = {
+                "x402Version": 1,
+                "paymentPayload": {
+                    "x402Version": 1,
+                    "scheme": data.get("scheme", "exact"),
+                    "network": canonical_network,
+                    "payload": data.get("payload", {}),
+                },
+                "paymentRequirements": {
+                    "scheme": "exact",
+                    "network": canonical_network,
+                    "maxAmountRequired": str(expected_amount),
+                    "resource": resource_url,
+                    "description": "x402Scout Discovery API",
+                    "mimeType": "application/json",
+                    "payTo": WALLET_ADDRESS,
+                    "maxTimeoutSeconds": 60,
+                    "asset": USDC_CONTRACT,
+                    "outputSchema": output_schema,
+                    "extra": {"name": "USD Coin", "version": "2"},
+                }
+            }
+            settle_headers = {"Content-Type": "application/json"}
+            jwt_token = _generate_cdp_jwt("POST", "/platform/v2/x402/settle")
+            if jwt_token:
+                settle_headers["Authorization"] = f"Bearer {jwt_token}"
+            async with httpx.AsyncClient(timeout=10.0) as settle_client:
+                settle_resp = await settle_client.post(
+                    CDP_SETTLE_URL,
+                    json=settle_payload,
+                    headers=settle_headers,
+                )
+                if settle_resp.status_code == 200:
+                    settle_data = settle_resp.json()
+                    tx_hash = settle_data.get("txHash") or settle_data.get("transaction", {}).get("hash", "")
+                    log.info("CDP settle success: txHash=%s resource=%s", tx_hash, resource_url)
+                    payment_response = base64.b64encode(_json.dumps({
+                        'success': True,
+                        'payer': payer_address,
+                        'amount': signed_amount,
+                        'network': 'eip155:8453',
+                        'txHash': tx_hash,
+                    }).encode()).decode()
+                else:
+                    log.warning("CDP settle returned %s: %s", settle_resp.status_code, settle_resp.text[:300])
         except Exception as settle_exc:
             # Non-fatal — local verification passed, payment is valid, settle failed
-            log.warning("Facilitator settle error (non-fatal): %s", settle_exc)
+            log.warning("CDP settle error (non-fatal): %s", settle_exc)
 
         return True, payment_response
         
