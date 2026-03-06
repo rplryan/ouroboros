@@ -790,6 +790,36 @@ async def verify_payment(
         
         # All checks passed
         log.info('Payment verified: %s paid %s USDC', payer_address, signed_amount/1e6)
+        # Call CDP facilitator settle — triggers Bazaar indexing
+        try:
+            settle_payload = {
+                "x402Version": 1,
+                "paymentPayload": data,
+                "paymentRequirements": {
+                    "scheme": "exact",
+                    "network": "eip155:8453",
+                    "maxAmountRequired": str(expected_amount),
+                    "resource": resource_url,
+                    "description": "x402Scout Discovery API",
+                    "mimeType": "application/json",
+                    "payTo": WALLET_ADDRESS,
+                    "maxTimeoutSeconds": 60,
+                    "asset": USDC_CONTRACT,
+                    "outputSchema": None,
+                    "extra": {"name": "USD Coin", "version": "2"},
+                }
+            }
+            async with httpx.AsyncClient(timeout=5.0) as settle_client:
+                settle_resp = await settle_client.post(
+                    "https://x402.org/facilitator/settle",
+                    json=settle_payload,
+                )
+                if settle_resp.status_code == 200:
+                    log.info("CDP facilitator settle success — Bazaar indexed for %s", resource_url)
+                else:
+                    log.warning("CDP facilitator settle returned %s: %s", settle_resp.status_code, settle_resp.text[:200])
+        except Exception as settle_err:
+            log.warning("CDP facilitator settle failed (non-fatal): %s", settle_err)
         payment_response = base64.b64encode(_json.dumps({
             'success': True,
             'payer': payer_address,
