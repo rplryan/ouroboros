@@ -815,13 +815,61 @@ async def verify_payment(
         # All checks passed
         log.info('Payment verified: %s paid %s USDC', payer_address, signed_amount/1e6)
 
-        # Default payment response (overridden if on-chain settle succeeds)
+        # Call x402.org/facilitator/settle to execute the on-chain transfer.
+        # The payment header is a signed EIP-3009 TransferWithAuthorization —
+        # the facilitator calls transferWithAuthorization on the USDC contract,
+        # which moves the USDC on-chain. No CDP auth required for this step.
         payment_response = base64.b64encode(_json.dumps({
             'success': True,
             'payer': payer_address,
             'amount': signed_amount,
             'network': 'eip155:8453'
         }).encode()).decode()
+
+        try:
+            from x402.http.facilitator_client import HTTPFacilitatorClientSync
+            from x402.http.facilitator_client_base import FacilitatorConfig
+            from x402.schemas.v1 import PaymentPayloadV1, PaymentRequirementsV1
+
+            # Build facilitator client with correct FacilitatorConfig
+            _fc = HTTPFacilitatorClientSync(
+                FacilitatorConfig(url="https://x402.org/facilitator")
+            )
+
+            # PaymentPayloadV1: x402_version, scheme, network, payload (raw dict)
+            _pp = PaymentPayloadV1(
+                x402_version=1,
+                scheme="exact",
+                network="eip155:8453",
+                payload=payload,
+            )
+            # PaymentRequirementsV1: max_amount_required MUST be str
+            _pr = PaymentRequirementsV1(
+                scheme="exact",
+                network="eip155:8453",
+                max_amount_required=str(int(amount)),
+                resource=resource_url,
+                description="x402Scout Discovery API — service discovery",
+                mime_type="application/json",
+                pay_to=WALLET_ADDRESS,
+                max_timeout_seconds=60,
+                asset=USDC_CONTRACT,
+                extra={"name": "USD Coin", "version": "2"},
+            )
+
+            settle_result = _fc.settle(_pp, _pr)
+            tx_hash = getattr(settle_result, "tx_hash", "") or getattr(settle_result, "transaction", "") or ""
+            log.info("Facilitator settle success: txHash=%s", tx_hash)
+            payment_response = base64.b64encode(_json.dumps({
+                "success": True,
+                "payer": payer_address,
+                "amount": signed_amount,
+                "network": "eip155:8453",
+                "txHash": tx_hash,
+            }).encode()).decode()
+        except Exception as settle_exc:
+            # Non-fatal — local verification passed, payment is valid, settle failed
+            log.warning("Facilitator settle error (non-fatal): %s", settle_exc)
 
         return True, payment_response
         
@@ -830,17 +878,56 @@ async def verify_payment(
         return False, ''
 
 
+# Bazaar discovery extensions — built once at startup using the official SDK
+try:
+    from x402.extensions.bazaar import declare_discovery_extension, OutputConfig
+
+    _BAZAAR_DISCOVER_EXT = declare_discovery_extension(
+        input={"q": "AI payment services"},
+        input_schema={
+            "properties": {"q": {"type": "string", "description": "Search query"}},
+            "required": ["q"],
+        },
+        output=OutputConfig(example={"services": [], "total": 0}),
+    )
+    _BAZAAR_SCAN_EXT = declare_discovery_extension(
+        input={"url": "https://example.com"},
+        input_schema={
+            "properties": {"url": {"type": "string", "description": "URL to scan for x402 compliance"}},
+            "required": ["url"],
+        },
+        output=OutputConfig(example={"compliant": True, "trust_score": 85}),
+    )
+    _BAZAAR_HEALTH_EXT = declare_discovery_extension(
+        input={"id": "service-id"},
+        input_schema={
+            "properties": {"id": {"type": "string", "description": "Service ID to health check"}},
+            "required": ["id"],
+        },
+        output=OutputConfig(example={"status": "online", "uptime_pct": 99.5}),
+    )
+    _BAZAAR_AVAILABLE = True
+except Exception as _be:
+    _BAZAAR_AVAILABLE = False
+    _BAZAAR_DISCOVER_EXT = {}
+    _BAZAAR_SCAN_EXT = {}
+    _BAZAAR_HEALTH_EXT = {}
+    log.warning("Bazaar extension unavailable: %s", _be)
+
+
 def _payment_required_body(
     host: str,
     resource_path: str,
     amount: str,
     description: str,
     input_schema: dict | None = None,
+    bazaar_ext: dict | None = None,
 ) -> dict:
     """Build a standards-compliant x402 Payment Required response body."""
+    # Always use eip155:8453 canonical form (Bazaar/facilitator requirement)
     entry: dict = {
         "scheme": "exact",
-        "network": "base",
+        "network": "eip155:8453",
         "maxAmountRequired": amount,
         "resource": f"https://{host}{resource_path}",
         "description": description,
@@ -850,6 +937,9 @@ def _payment_required_body(
         "asset": USDC_CONTRACT,
         "extra": {"name": "USD Coin", "version": "2"},
     }
+    # Add Bazaar discovery extension so the facilitator catalogs this endpoint
+    if bazaar_ext:
+        entry["extensions"] = bazaar_ext
     body: dict = {
         "x402Version": 1,
         "accepts": [entry],
@@ -1340,6 +1430,7 @@ async def discover(
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Service Discovery — search and filter 646+ live x402-enabled services by keyword, category, and trust score",
+                bazaar_ext=_BAZAAR_DISCOVER_EXT,
             ),
         )
 
@@ -1355,6 +1446,7 @@ async def discover(
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Service Discovery — search and filter 646+ live x402-enabled services by keyword, category, and trust score",
+                bazaar_ext=_BAZAAR_DISCOVER_EXT,
             ),
         )
 
@@ -1476,6 +1568,7 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
             content=_payment_required_body(
                 host, resource_path, HEALTH_PRICE_UNITS,
                 "x402 Live Health Check — on-demand probe of a registered service with real-time uptime stats and latency",
+                bazaar_ext=_BAZAAR_HEALTH_EXT,
             ),
         )
 
@@ -1491,6 +1584,7 @@ async def health_check(endpoint_id: str, request: Request) -> JSONResponse:
             content=_payment_required_body(
                 host, resource_path, HEALTH_PRICE_UNITS,
                 "x402 Live Health Check — on-demand probe of a registered service with real-time uptime stats and latency",
+                bazaar_ext=_BAZAAR_HEALTH_EXT,
             ),
         )
 
@@ -1960,6 +2054,7 @@ async def scan_endpoint(request: Request, url: str) -> JSONResponse:
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Compliance Scan — check any URL for x402 protocol compliance, trust score, and payment address verification",
+                bazaar_ext=_BAZAAR_SCAN_EXT,
             ),
         )
 
@@ -1975,6 +2070,7 @@ async def scan_endpoint(request: Request, url: str) -> JSONResponse:
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Compliance Scan — check any URL for x402 protocol compliance, trust score, and payment address verification",
+                bazaar_ext=_BAZAAR_SCAN_EXT,
             ),
         )
 
@@ -2541,7 +2637,7 @@ async def mcp_call(request: Request) -> JSONResponse:
         DISCOVER_PRICE = "1000"  # $0.001 USDC
 
         if not payment_header:
-            challenge = _payment_required_body(host, resource_path, DISCOVER_PRICE, "x402_discover tool call")
+            challenge = _payment_required_body(host, resource_path, DISCOVER_PRICE, "x402_discover tool call", bazaar_ext=_BAZAAR_DISCOVER_EXT)
             return JSONResponse(challenge, status_code=402, headers={
                 "X-PAYMENT": json.dumps(challenge["accepts"][0]),
                 "Access-Control-Expose-Headers": "X-PAYMENT",
@@ -2549,7 +2645,7 @@ async def mcp_call(request: Request) -> JSONResponse:
 
         is_valid, payment_response = await verify_payment(payment_header, f"https://{host}{resource_path}", DISCOVER_PRICE)
         if not is_valid:
-            challenge = _payment_required_body(host, resource_path, DISCOVER_PRICE, "x402_discover tool call")
+            challenge = _payment_required_body(host, resource_path, DISCOVER_PRICE, "x402_discover tool call", bazaar_ext=_BAZAAR_DISCOVER_EXT)
             return JSONResponse({"error": "Payment invalid", **challenge}, status_code=402)
 
         q = arguments.get("query") or arguments.get("capability")
