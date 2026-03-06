@@ -99,6 +99,10 @@ HEALTH_PRICE_UNITS: str = os.getenv("HEALTH_PRICE_USDC_UNITS", "1000")         #
 FACILITATOR_URL: str = os.getenv(
     "FACILITATOR_URL", "https://api.cdp.coinbase.com/platform/v2/x402/verify"
 )
+# CDP API credentials for settlement (Bazaar indexing)
+CDP_API_KEY_ID: str = os.getenv("CDP_API_KEY_ID", "")
+CDP_API_KEY_SECRET: str = os.getenv("CDP_API_KEY_SECRET", "")
+CDP_SETTLE_URL: str = "https://api.cdp.coinbase.com/platform/v2/x402/settle"
 PAYAI_FACILITATOR_URL: str = "https://facilitator.payai.network/verify"
 PAYAI_REGISTER_URL: str = "https://facilitator.payai.network/register-merchant"
 
@@ -694,6 +698,27 @@ async def _extract_x402_payment_metadata(url: str) -> dict:
 # x402 payment verification
 # ---------------------------------------------------------------------------
 
+def _generate_cdp_jwt(method: str, path: str) -> str | None:
+    """Generate a Bearer JWT for CDP API authentication.
+    Returns None if CDP credentials are not configured.
+    """
+    if not CDP_API_KEY_ID or not CDP_API_KEY_SECRET:
+        return None
+    try:
+        from cdp.auth.utils.jwt import generate_jwt, JwtOptions
+        token = generate_jwt(JwtOptions(
+            api_key_id=CDP_API_KEY_ID,
+            api_key_secret=CDP_API_KEY_SECRET,
+            request_method=method,
+            request_host="api.cdp.coinbase.com",
+            request_path=path,
+        ))
+        return token
+    except Exception as e:
+        log.warning("Failed to generate CDP JWT: %s", e)
+        return None
+
+
 async def verify_payment(
     payment_header: str,
     resource_url: str,
@@ -790,7 +815,16 @@ async def verify_payment(
         
         # All checks passed
         log.info('Payment verified: %s paid %s USDC', payer_address, signed_amount/1e6)
-        # Call CDP facilitator settle — triggers Bazaar indexing
+
+        # Default payment response (overridden if on-chain settle succeeds)
+        payment_response = base64.b64encode(_json.dumps({
+            'success': True,
+            'payer': payer_address,
+            'amount': signed_amount,
+            'network': 'eip155:8453'
+        }).encode()).decode()
+
+        # Settle via CDP facilitator — submits on-chain USDC transfer + triggers Bazaar indexing
         try:
             settle_payload = {
                 "x402Version": 1,
@@ -809,23 +843,32 @@ async def verify_payment(
                     "extra": {"name": "USD Coin", "version": "2"},
                 }
             }
-            async with httpx.AsyncClient(timeout=5.0) as settle_client:
+            settle_headers = {"Content-Type": "application/json"}
+            jwt_token = _generate_cdp_jwt("POST", "/platform/v2/x402/settle")
+            if jwt_token:
+                settle_headers["Authorization"] = f"Bearer {jwt_token}"
+            async with httpx.AsyncClient(timeout=10.0) as settle_client:
                 settle_resp = await settle_client.post(
-                    "https://x402.org/facilitator/settle",
+                    CDP_SETTLE_URL,
                     json=settle_payload,
+                    headers=settle_headers,
                 )
                 if settle_resp.status_code == 200:
-                    log.info("CDP facilitator settle success — Bazaar indexed for %s", resource_url)
+                    settle_data = settle_resp.json()
+                    tx_hash = settle_data.get("txHash") or settle_data.get("transaction", {}).get("hash", "")
+                    log.info("Payment settled on-chain: txHash=%s resource=%s", tx_hash, resource_url)
+                    payment_response = base64.b64encode(_json.dumps({
+                        'success': True,
+                        'payer': payer_address,
+                        'amount': signed_amount,
+                        'network': 'eip155:8453',
+                        'txHash': tx_hash,
+                    }).encode()).decode()
                 else:
-                    log.warning("CDP facilitator settle returned %s: %s", settle_resp.status_code, settle_resp.text[:200])
+                    log.warning("CDP settle returned %s: %s", settle_resp.status_code, settle_resp.text[:300])
         except Exception as settle_err:
-            log.warning("CDP facilitator settle failed (non-fatal): %s", settle_err)
-        payment_response = base64.b64encode(_json.dumps({
-            'success': True,
-            'payer': payer_address,
-            'amount': signed_amount,
-            'network': 'eip155:8453'
-        }).encode()).decode()
+            log.warning("CDP settle failed (non-fatal): %s", settle_err)
+
         return True, payment_response
         
     except Exception as exc:
