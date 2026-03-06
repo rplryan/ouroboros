@@ -1195,11 +1195,11 @@ CAPABILITY_VOCABULARY = {
 
 
 class RegisterRequest(BaseModel):
-    name: str
-    description: str
+    name: str = ""
+    description: str = ""
     url: str
-    category: str
-    price_usd: float
+    category: str = "other"
+    price_usd: float = 0.0
     network: str = "base"
     asset_address: str = USDC_CONTRACT
     tags: list[str] = []
@@ -1215,14 +1215,7 @@ class RegisterRequest(BaseModel):
     @classmethod
     def category_must_be_valid(cls, v: str) -> str:
         if v not in VALID_CATEGORIES:
-            raise ValueError(f"category must be one of {sorted(VALID_CATEGORIES)}")
-        return v
-
-    @field_validator("price_usd")
-    @classmethod
-    def price_must_be_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("price_usd must be > 0")
+            return "other"
         return v
 
 
@@ -1597,6 +1590,13 @@ async def register(body: RegisterRequest, request: Request) -> JSONResponse:
                 status_code=409,
                 content={"error": "An endpoint with this URL is already registered.", "id": existing["id"]},
             )
+
+    # Auto-derive name from URL if not provided
+    import urllib.parse as _urlparse
+    if not body.name:
+        body.name = _urlparse.urlparse(body.url).netloc or body.url
+    if not body.description:
+        body.description = f"x402-compatible service at {body.url}"
 
     entry = {
         "id": str(uuid.uuid4()),
