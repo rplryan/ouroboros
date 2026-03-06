@@ -101,6 +101,34 @@ FACILITATOR_URL: str = os.getenv(
 )
 CDP_API_KEY_ID: str = os.getenv("CDP_API_KEY_ID", "")
 CDP_API_KEY_SECRET: str = os.getenv("CDP_API_KEY_SECRET", "")
+CDP_SETTLE_URL: str = "https://api.cdp.coinbase.com/platform/v2/x402/settle"
+
+# Output schema for /discover — passed to CDP settle for Bazaar auto-indexing
+DISCOVER_OUTPUT_SCHEMA: dict = {
+    "input": {
+        "type": "http",
+        "method": "GET",
+        "queryParams": {"q": "ai data", "category": "data", "limit": "10"},
+        "discoverable": True,
+    },
+    "output": {
+        "type": "json",
+        "example": {
+            "results": [
+                {
+                    "id": "abc123",
+                    "name": "Example x402 Service",
+                    "url": "https://example.com/api",
+                    "category": "data",
+                    "trust_score": 85,
+                    "price_usd": 0.01,
+                    "description": "An example x402-enabled data service",
+                }
+            ],
+            "total": 1,
+        },
+    },
+}
 
 PAYAI_FACILITATOR_URL: str = "https://facilitator.payai.network/verify"
 PAYAI_REGISTER_URL: str = "https://facilitator.payai.network/register-merchant"
@@ -847,7 +875,7 @@ async def verify_payment(
                     "payTo": WALLET_ADDRESS,
                     "maxTimeoutSeconds": 60,
                     "asset": USDC_CONTRACT,
-                    "outputSchema": output_schema,
+                    "outputSchema": output_schema or DISCOVER_OUTPUT_SCHEMA,
                     "extra": {"name": "USD Coin", "version": "2"},
                 }
             }
