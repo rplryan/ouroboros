@@ -875,7 +875,7 @@ async def verify_payment(
                     "payTo": WALLET_ADDRESS,
                     "maxTimeoutSeconds": 60,
                     "asset": USDC_CONTRACT,
-                    "outputSchema": output_schema or DISCOVER_OUTPUT_SCHEMA,
+                    "outputSchema": DISCOVER_OUTPUT_SCHEMA,
                     "extra": {"name": "USD Coin", "version": "2"},
                 }
             }
