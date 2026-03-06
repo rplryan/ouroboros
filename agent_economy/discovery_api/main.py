@@ -99,37 +99,8 @@ HEALTH_PRICE_UNITS: str = os.getenv("HEALTH_PRICE_USDC_UNITS", "1000")         #
 FACILITATOR_URL: str = os.getenv(
     "FACILITATOR_URL", "https://api.cdp.coinbase.com/platform/v2/x402/verify"
 )
-# CDP API credentials for settlement (Bazaar indexing)
 CDP_API_KEY_ID: str = os.getenv("CDP_API_KEY_ID", "")
 CDP_API_KEY_SECRET: str = os.getenv("CDP_API_KEY_SECRET", "")
-CDP_SETTLE_URL: str = "https://api.cdp.coinbase.com/platform/v2/x402/settle"
-
-# Output schema for /discover — used in 402 responses and CDP settle for Bazaar indexing
-DISCOVER_OUTPUT_SCHEMA: dict = {
-    "input": {
-        "type": "http",
-        "method": "GET",
-        "queryParams": {"q": "ai data", "category": "data", "limit": "10"},
-        "discoverable": True,
-    },
-    "output": {
-        "type": "json",
-        "example": {
-            "results": [
-                {
-                    "id": "abc123",
-                    "name": "Example x402 Service",
-                    "url": "https://example.com/api",
-                    "category": "data",
-                    "trust_score": 85,
-                    "price_usd": 0.01,
-                    "description": "An example x402-enabled data service",
-                }
-            ],
-            "total": 1,
-        },
-    },
-}
 
 PAYAI_FACILITATOR_URL: str = "https://facilitator.payai.network/verify"
 PAYAI_REGISTER_URL: str = "https://facilitator.payai.network/register-merchant"
@@ -751,7 +722,6 @@ async def verify_payment(
     payment_header: str,
     resource_url: str,
     amount: str,
-    output_schema: dict | None = None,
 ) -> tuple[bool, str]:
     """Verify x402 payment locally using EIP-712 signature verification."""
     import base64
@@ -853,59 +823,6 @@ async def verify_payment(
             'network': 'eip155:8453'
         }).encode()).decode()
 
-        # Settle via CDP facilitator — submits on-chain USDC transfer + triggers Bazaar indexing
-        try:
-            # Normalize network name: CDP settle requires consistent CAIP-2 format
-            incoming_network = data.get("network", "eip155:8453")
-            canonical_network = "eip155:8453" if incoming_network in ("base", "eip155:8453") else incoming_network
-            settle_payload = {
-                "x402Version": 1,
-                "paymentPayload": {
-                    "x402Version": 1,
-                    "scheme": data.get("scheme", "exact"),
-                    "network": canonical_network,
-                    "payload": data.get("payload", {}),
-                },
-                "paymentRequirements": {
-                    "scheme": "exact",
-                    "network": canonical_network,
-                    "maxAmountRequired": str(expected_amount),
-                    "resource": resource_url,
-                    "description": "x402Scout Discovery API",
-                    "mimeType": "application/json",
-                    "payTo": WALLET_ADDRESS,
-                    "maxTimeoutSeconds": 60,
-                    "asset": USDC_CONTRACT,
-                    "outputSchema": output_schema,
-                    "extra": {"name": "USD Coin", "version": "2"},
-                }
-            }
-            settle_headers = {"Content-Type": "application/json"}
-            jwt_token = _generate_cdp_jwt("POST", "/platform/v2/x402/settle")
-            if jwt_token:
-                settle_headers["Authorization"] = f"Bearer {jwt_token}"
-            async with httpx.AsyncClient(timeout=10.0) as settle_client:
-                settle_resp = await settle_client.post(
-                    CDP_SETTLE_URL,
-                    json=settle_payload,
-                    headers=settle_headers,
-                )
-                if settle_resp.status_code == 200:
-                    settle_data = settle_resp.json()
-                    tx_hash = settle_data.get("txHash") or settle_data.get("transaction", {}).get("hash", "")
-                    log.info("Payment settled on-chain: txHash=%s resource=%s", tx_hash, resource_url)
-                    payment_response = base64.b64encode(_json.dumps({
-                        'success': True,
-                        'payer': payer_address,
-                        'amount': signed_amount,
-                        'network': 'eip155:8453',
-                        'txHash': tx_hash,
-                    }).encode()).decode()
-                else:
-                    log.warning("CDP settle returned %s: %s", settle_resp.status_code, settle_resp.text[:300])
-        except Exception as settle_err:
-            log.warning("CDP settle failed (non-fatal): %s", settle_err)
-
         return True, payment_response
         
     except Exception as exc:
@@ -919,13 +836,8 @@ def _payment_required_body(
     amount: str,
     description: str,
     input_schema: dict | None = None,
-    output_schema: dict | None = None,
 ) -> dict:
-    """Build a standards-compliant x402 Payment Required response body.
-
-    Includes outputSchema for Coinbase CDP Bazaar auto-indexing.
-    See: https://docs.cdp.coinbase.com/x402/docs/bazaar
-    """
+    """Build a standards-compliant x402 Payment Required response body."""
     entry: dict = {
         "scheme": "exact",
         "network": "base",
@@ -938,39 +850,6 @@ def _payment_required_body(
         "asset": USDC_CONTRACT,
         "extra": {"name": "USD Coin", "version": "2"},
     }
-    if output_schema is not None:
-        entry["outputSchema"] = output_schema
-        # Build extensions.bazaar from outputSchema for CDP Bazaar auto-indexing
-        entry["extensions"] = {
-            "bazaar": {
-                "info": output_schema,
-                "schema": {
-                    "$schema": "https://json-schema.org/draft/2020-12/schema",
-                    "type": "object",
-                    "properties": {
-                        "input": {
-                            "type": "object",
-                            "properties": {
-                                "type": {"type": "string", "const": "http"},
-                                "method": {"type": "string", "enum": ["GET", "POST"]},
-                                "queryParams": {"type": "object"},
-                                "discoverable": {"type": "boolean"},
-                            },
-                            "required": ["type"],
-                        },
-                        "output": {
-                            "type": "object",
-                            "properties": {
-                                "type": {"type": "string"},
-                                "example": {"type": "object"},
-                            },
-                            "required": ["type"],
-                        },
-                    },
-                    "required": ["input"],
-                },
-            }
-        }
     body: dict = {
         "x402Version": 1,
         "accepts": [entry],
@@ -1461,13 +1340,12 @@ async def discover(
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Service Discovery — search and filter 646+ live x402-enabled services by keyword, category, and trust score",
-                output_schema=DISCOVER_OUTPUT_SCHEMA,
             ),
         )
 
     resource_url = f"https://{host}{resource_path}"
     is_valid, payment_response = await verify_payment(
-        payment_header, resource_url, QUERY_PRICE_UNITS, output_schema=DISCOVER_OUTPUT_SCHEMA
+        payment_header, resource_url, QUERY_PRICE_UNITS
     )
 
     if not is_valid:
@@ -1477,7 +1355,6 @@ async def discover(
             content=_payment_required_body(
                 host, resource_path, QUERY_PRICE_UNITS,
                 "x402 Service Discovery — search and filter 646+ live x402-enabled services by keyword, category, and trust score",
-                output_schema=DISCOVER_OUTPUT_SCHEMA,
             ),
         )
 
