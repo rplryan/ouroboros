@@ -300,7 +300,9 @@ SERVICE_BASE_URL: str = os.getenv(
     "SERVICE_BASE_URL", "https://x402scout.com"
 )
 
-REGISTRY_PATH: Path = Path(__file__).parent / "registry.json"
+# Use persistent disk at /data if available (Render persistent disk), else local fallback
+_PERSISTENT_DISK = Path("/data")
+REGISTRY_PATH: Path = _PERSISTENT_DISK / "catalog.json" if _PERSISTENT_DISK.exists() else Path(__file__).parent / "registry.json"
 DB_PATH: Path = Path(__file__).parent / "health.db"
 
 HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
@@ -541,16 +543,29 @@ async def _background_health_checker() -> None:
 # Registry helpers
 # ---------------------------------------------------------------------------
 
+# Always resolve seed relative to this file, not REGISTRY_PATH (which may be /data/)
+_SEED_PATH: Path = Path(__file__).parent / "registry_seed.json"
+
 def _load_registry() -> list[dict]:
     if REGISTRY_PATH.exists():
         with REGISTRY_PATH.open() as fh:
-            return json.load(fh)
-    # Fall back to seed file to survive Render deploys without losing catalog data
-    seed_path = REGISTRY_PATH.parent / "registry_seed.json"
-    if seed_path.exists():
-        log.info("registry.json not found, loading from registry_seed.json")
-        with seed_path.open() as fh:
-            return json.load(fh)
+            data = json.load(fh)
+            log.info("Loaded %d services from persistent disk (%s)", len(data), REGISTRY_PATH)
+            return data
+    # Persistent disk empty/missing — bootstrap from committed seed file
+    if _SEED_PATH.exists():
+        with _SEED_PATH.open() as fh:
+            data = json.load(fh)
+            log.info("Bootstrapping from registry_seed.json (%d services)", len(data))
+            # Immediately write to persistent disk so next restart is fast
+            try:
+                REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+                with REGISTRY_PATH.open("w") as out:
+                    json.dump(data, out, indent=2)
+                log.info("Wrote seed to persistent disk at %s", REGISTRY_PATH)
+            except Exception as exc:
+                log.warning("Could not pre-write seed to disk: %s", exc)
+            return data
     return []
 
 
@@ -561,11 +576,10 @@ def _enforce_first_party_from_seed() -> None:
     first-party products always have correct descriptions, trust scores, and featured flags.
     """
     global _registry
-    seed_path = REGISTRY_PATH.parent / "registry_seed.json"
-    if not seed_path.exists():
+    if not _SEED_PATH.exists():
         return
     try:
-        with seed_path.open() as fh:
+        with _SEED_PATH.open() as fh:
             seed_entries = json.load(fh)
     except Exception:
         return
@@ -1106,7 +1120,6 @@ SERVICE_BASE_URL: str = os.getenv(
     "SERVICE_BASE_URL", "https://x402scout.com"
 )
 
-REGISTRY_PATH: Path = Path(__file__).parent / "registry.json"
 DB_PATH: Path = Path(__file__).parent / "health.db"
 
 HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
