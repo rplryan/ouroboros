@@ -6,6 +6,8 @@ ready to be upserted into the registry:
   - x402.org/ecosystem (official ecosystem page)
   - GitHub search API (repos with x402 topics/keywords)
   - Manual high-value seed list (known services)
+  - Smithery.ai (MCP server marketplace)
+  - mcp.so (MCP server directory)
 
 New entries are given:
   status = "discovered"
@@ -300,6 +302,169 @@ async def _fetch_github_x402_repos(client: httpx.AsyncClient) -> list[dict[str, 
 
 
 # ---------------------------------------------------------------------------
+# Source 5: Smithery.ai
+# ---------------------------------------------------------------------------
+
+SMITHERY_API_URL = "https://smithery.ai/api/servers"
+SMITHERY_HTML_URL = "https://smithery.ai/servers"
+
+_SMITHERY_SKIP = {"smithery.ai", "github.com", "docs.", "discord.", "twitter."}
+
+_INFER_CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "data": ["data", "analytics", "database", "search", "scrape", "web", "news", "weather"],
+    "compute": ["compute", "ai", "ml", "inference", "model", "llm", "vision", "image"],
+    "agent": ["agent", "automation", "workflow", "mcp", "tool", "assistant", "bot"],
+    "utility": [],
+}
+
+
+def _infer_category(text: str) -> str:
+    lower = text.lower()
+    for cat, keywords in _INFER_CATEGORY_KEYWORDS.items():
+        if any(k in lower for k in keywords):
+            return cat
+    return "utility"
+
+
+async def _fetch_smithery(client: httpx.AsyncClient) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    # Try JSON API first
+    try:
+        resp = await client.get(SMITHERY_API_URL, timeout=HTTP_TIMEOUT)
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data if isinstance(data, list) else data.get("servers", data.get("items", data.get("results", [])))
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                url = (
+                    item.get("endpoint")
+                    or item.get("url")
+                    or item.get("homepage")
+                    or item.get("baseUrl")
+                    or ""
+                ).rstrip("/")
+                if not url or not url.startswith("https://"):
+                    continue
+                if any(skip in url for skip in _SMITHERY_SKIP):
+                    continue
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                name = item.get("name") or item.get("displayName") or _hostname_name(url)
+                description = item.get("description") or f"MCP server listed on Smithery.ai: {name}"
+                tags_raw = item.get("tags") or item.get("categories") or []
+                tags = ["x402", "smithery", "mcp"] + [str(t) for t in tags_raw[:3]]
+                category = _infer_category(" ".join([name, description] + tags_raw[:5]))
+                entry = _canonical_entry(url=url, name=name, description=description, category=category, tags=tags)
+                entry["source"] = "smithery"
+                results.append(entry)
+            log.info("smithery.ai (API): found %d candidates", len(results))
+            return results
+    except Exception as exc:
+        log.warning("Smithery API failed, falling back to HTML scrape: %s", exc)
+
+    # Fallback: HTML scrape
+    try:
+        resp = await client.get(SMITHERY_HTML_URL, timeout=HTTP_TIMEOUT, follow_redirects=True)
+        resp.raise_for_status()
+        url_re = re.compile(r'https://[^\s"\'<>]+')
+        for url in url_re.findall(resp.text):
+            url = url.split("?")[0].rstrip("/")
+            if any(skip in url for skip in _SMITHERY_SKIP):
+                continue
+            if not url.startswith("https://"):
+                continue
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            entry = _canonical_entry(url=url, tags=["x402", "smithery", "mcp"])
+            entry["source"] = "smithery"
+            results.append(entry)
+        log.info("smithery.ai (HTML): found %d candidates", len(results))
+    except Exception as exc:
+        log.warning("Failed to fetch smithery.ai HTML: %s", exc)
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Source 6: mcp.so
+# ---------------------------------------------------------------------------
+
+MCPSO_API_URL = "https://mcp.so/api/servers"
+MCPSO_HTML_URL = "https://mcp.so/servers"
+
+_MCPSO_SKIP = {"mcp.so", "github.com", "docs.", "discord.", "twitter."}
+
+
+async def _fetch_mcpso(client: httpx.AsyncClient) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    # Try JSON API first
+    try:
+        resp = await client.get(MCPSO_API_URL, timeout=HTTP_TIMEOUT)
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data if isinstance(data, list) else data.get("servers", data.get("items", data.get("results", [])))
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                url = (
+                    item.get("endpoint")
+                    or item.get("url")
+                    or item.get("homepage")
+                    or item.get("baseUrl")
+                    or ""
+                ).rstrip("/")
+                if not url or not url.startswith("https://"):
+                    continue
+                if any(skip in url for skip in _MCPSO_SKIP):
+                    continue
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                name = item.get("name") or item.get("displayName") or _hostname_name(url)
+                description = item.get("description") or f"MCP server listed on mcp.so: {name}"
+                tags_raw = item.get("tags") or item.get("categories") or []
+                tags = ["x402", "mcp", "mcp.so"] + [str(t) for t in tags_raw[:3]]
+                category = _infer_category(" ".join([name, description] + tags_raw[:5]))
+                entry = _canonical_entry(url=url, name=name, description=description, category=category, tags=tags)
+                entry["source"] = "mcp.so"
+                results.append(entry)
+            log.info("mcp.so (API): found %d candidates", len(results))
+            return results
+    except Exception as exc:
+        log.warning("mcp.so API failed, falling back to HTML scrape: %s", exc)
+
+    # Fallback: HTML scrape
+    try:
+        resp = await client.get(MCPSO_HTML_URL, timeout=HTTP_TIMEOUT, follow_redirects=True)
+        resp.raise_for_status()
+        url_re = re.compile(r'https://[^\s"\'<>]+')
+        for url in url_re.findall(resp.text):
+            url = url.split("?")[0].rstrip("/")
+            if any(skip in url for skip in _MCPSO_SKIP):
+                continue
+            if not url.startswith("https://"):
+                continue
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            entry = _canonical_entry(url=url, tags=["x402", "mcp", "mcp.so"])
+            entry["source"] = "mcp.so"
+            results.append(entry)
+        log.info("mcp.so (HTML): found %d candidates", len(results))
+    except Exception as exc:
+        log.warning("Failed to fetch mcp.so HTML: %s", exc)
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Source 4: Manual high-value seeds
 # ---------------------------------------------------------------------------
 
@@ -334,13 +499,15 @@ async def run_ecosystem_scan(existing_urls: set[str]) -> list[dict[str, Any]]:
     log.info("Starting ecosystem scan (existing: %d services)", len(existing_urls))
 
     async with httpx.AsyncClient(
-        headers={"User-Agent": "x402-discovery-bot/3.8.0 (+https://x402scout.com)"},
+        headers={"User-Agent": "x402-discovery-bot/3.8.1 (+https://x402scout.com)"},
         timeout=HTTP_TIMEOUT,
     ) as client:
-        awesome_entries, x402_org_entries, github_entries = await asyncio.gather(
+        awesome_entries, x402_org_entries, github_entries, smithery_entries, mcpso_entries = await asyncio.gather(
             _fetch_awesome_x402(client),
             _fetch_x402_org_ecosystem(client),
             _fetch_github_x402_repos(client),
+            _fetch_smithery(client),
+            _fetch_mcpso(client),
         )
 
     # Add manual seeds
@@ -348,7 +515,7 @@ async def run_ecosystem_scan(existing_urls: set[str]) -> list[dict[str, Any]]:
 
     # Merge all, deduplicate
     all_candidates: dict[str, dict[str, Any]] = {}
-    for entry in awesome_entries + x402_org_entries + github_entries + manual_entries:
+    for entry in awesome_entries + x402_org_entries + github_entries + manual_entries + smithery_entries + mcpso_entries:
         url = entry["url"]
         if url not in existing_urls and url not in all_candidates:
             all_candidates[url] = entry
