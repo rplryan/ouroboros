@@ -2225,32 +2225,96 @@ async def list_trust_providers():
     """
     List known ERC-8004-registered trust providers.
 
-    These are the providers queried when building a chainVerifications block
-    in a discovery attestation. Any ERC-8004-compliant provider can be listed here.
-    Each provider publishes a JWKS endpoint for offline signature verification.
+    Each provider is enriched with live metadata pulled from their providers_url
+    (if available). This includes record counts, capabilities, status, ERC-8004
+    registration details, and more — dynamically fetched at request time.
     """
     providers = list(KNOWN_TRUST_PROVIDERS)
-    # Enrich each provider with live metadata if they have a providers_url
-    for i, provider in enumerate(providers):
+
+    async def _enrich_provider(i: int, provider: dict) -> None:
+        """Pull live metadata from provider's providers_url and enrich in-place."""
         providers_url = provider.get("providers_url")
-        if providers_url:
-            try:
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    resp = await client.get(providers_url)
-                    if resp.status_code == 200:
-                        live_data = resp.json()
-                        # Look for record_count or unique_entities in the response
-                        if isinstance(live_data, dict):
-                            providers_info = live_data.get("providers", [live_data])
-                            for p in (providers_info if isinstance(providers_info, list) else [providers_info]):
-                                rc = (p.get("record_count") or p.get("recordCount") or
-                                      p.get("unique_entities") or p.get("uniqueEntities") or
-                                      p.get("total_records") or p.get("totalRecords"))
-                                if rc and isinstance(rc, (int, float)):
-                                    providers[i] = {**provider, "record_count": int(rc)}
-                                    break
-            except Exception:
-                pass  # Use static fallback
+        if not providers_url:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                resp = await client.get(providers_url, follow_redirects=True)
+            if resp.status_code != 200:
+                return
+            live_data = resp.json()
+            if not isinstance(live_data, dict):
+                return
+
+            # Find the provider-level dict (may be nested under "providers" list)
+            providers_list = live_data.get("providers", [])
+            p_data = providers_list[0] if isinstance(providers_list, list) and providers_list else live_data
+
+            enriched = dict(provider)
+
+            # --- Numeric record counts ---
+            for src_key, dst_key in [
+                ("record_count", "record_count"), ("recordCount", "record_count"),
+                ("unique_entities", "unique_entities"), ("uniqueEntities", "unique_entities"),
+                ("searchableNames", "searchable_names"), ("searchable_names", "searchable_names"),
+                ("total_records", "record_count"),
+            ]:
+                val = p_data.get(src_key)
+                if val and isinstance(val, (int, float)):
+                    enriched[dst_key] = int(val)
+
+            # --- Status (prefer live) ---
+            live_status = p_data.get("status")
+            if live_status:
+                enriched["status"] = live_status
+
+            # --- Capabilities list ---
+            caps = p_data.get("capabilities")
+            if caps and isinstance(caps, list):
+                enriched["capabilities"] = caps
+
+            # --- Description (prefer longer/more current live version) ---
+            live_desc = p_data.get("description")
+            if live_desc and isinstance(live_desc, str) and len(live_desc) > len(provider.get("description", "")):
+                enriched["description"] = live_desc
+
+            # --- ERC-8004 registration details ---
+            erc8004 = live_data.get("erc8004")
+            if erc8004 and isinstance(erc8004, dict):
+                enriched["erc8004"] = {
+                    "agent_id": erc8004.get("agentId"),
+                    "registry": erc8004.get("agentRegistry"),
+                    "registration_tx": erc8004.get("registrationTx"),
+                    "chain": erc8004.get("chain"),
+                    "registered_at": erc8004.get("registeredAt"),
+                    "status": erc8004.get("status"),
+                }
+
+            # --- Data sources summary (top-level counts per category) ---
+            data_sources = p_data.get("dataSources") or p_data.get("data_sources")
+            if data_sources and isinstance(data_sources, dict):
+                enriched["data_sources_summary"] = {
+                    cat: info.get("total") if isinstance(info, dict) else info
+                    for cat, info in data_sources.items()
+                    if isinstance(info, (dict, int))
+                }
+
+            # --- Registered at ---
+            reg_at = p_data.get("registeredAt") or p_data.get("registered_at")
+            if reg_at:
+                enriched["registered_at"] = reg_at
+
+            # Mark as live-enriched
+            enriched["_live_data_fetched"] = True
+            enriched["_live_data_source"] = providers_url
+
+            providers[i] = enriched
+
+        except Exception:
+            pass  # Use static fallback silently
+
+    # Fetch all provider metadata concurrently
+    await asyncio.gather(*[_enrich_provider(i, p) for i, p in enumerate(providers)])
+
     return {
         "providers": providers,
         "count": len(providers),
