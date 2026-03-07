@@ -602,6 +602,31 @@ def _enforce_first_party_from_seed() -> None:
     _save_registry(_registry)
 
 
+def _enforce_trust_provider_endpoints() -> None:
+    """Ensure all mru-oracle.com endpoints from seed are present in the live registry."""
+    global _registry
+    if not _SEED_PATH.exists():
+        return
+    try:
+        with _SEED_PATH.open() as fh:
+            seed_entries = json.load(fh)
+    except Exception:
+        return
+
+    existing_urls = {e.get("url") for e in _registry}
+    added = 0
+    for entry in seed_entries:
+        url = entry.get("url", "")
+        if "mru-oracle.com" in url and url not in existing_urls:
+            _registry.append(_migrate_entry(entry))
+            existing_urls.add(url)
+            added += 1
+
+    if added:
+        log.info("Enforced %d mru-oracle.com trust provider endpoints from seed", added)
+        _save_registry(_registry)
+
+
 def _save_registry(entries: list[dict]) -> None:
     try:
         with REGISTRY_PATH.open("w") as fh:
@@ -1331,6 +1356,7 @@ async def _app_lifespan(app: FastAPI):
     init_db()
     log.info("SQLite health DB initialized at %s", DB_PATH)
     _enforce_first_party_from_seed()  # Runs at startup: always use authoritative seed data for first-party products
+    _enforce_trust_provider_endpoints()  # Ensure all mru-oracle.com endpoints are in the live catalog
     health_task = asyncio.create_task(_background_health_checker())
     scraper_task = asyncio.create_task(_background_scraper())
 
@@ -1399,8 +1425,8 @@ if _streamable_mcp_asgi is not None:
 @app.middleware("http")
 async def redirect_old_domain(request: Request, call_next):
     host = request.headers.get("host", "")
-    if "x402scout.onrender.com" in host or "x402-discovery-api.onrender.com" in host:
-        new_url = str(request.url).replace(host, "x402scout.com")
+    if "onrender.com" in host:
+        new_url = str(request.url).replace(host, "x402scout.com", 1)
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url=new_url, status_code=301)
     return await call_next(request)
@@ -2217,7 +2243,9 @@ async def list_trust_providers():
                         if isinstance(live_data, dict):
                             providers_info = live_data.get("providers", [live_data])
                             for p in (providers_info if isinstance(providers_info, list) else [providers_info]):
-                                rc = p.get("record_count") or p.get("unique_entities") or p.get("total_records")
+                                rc = (p.get("record_count") or p.get("recordCount") or
+                                      p.get("unique_entities") or p.get("uniqueEntities") or
+                                      p.get("total_records") or p.get("totalRecords"))
                                 if rc and isinstance(rc, (int, float)):
                                     providers[i] = {**provider, "record_count": int(rc)}
                                     break
