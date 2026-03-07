@@ -610,12 +610,11 @@ async function fetchCatalog() {
   }
 }
 
-async function fetchNavCount() {
+async function fetchStats() {
   try {
     const res = await fetch('/stats');
     if (!res.ok) return null;
-    const data = await res.json();
-    return data.total_services || data.active_services || null;
+    return await res.json();
   } catch { return null; }
 }
 
@@ -739,15 +738,14 @@ function updateStats(services) {
       if (cur >= val) clearInterval(timer);
     }, 30);
   };
-  animNum(document.getElementById('stat-services'), total);
   animNum(document.getElementById('stat-categories'), cats);
   animNum(document.getElementById('stat-trust'), avgTrust);
 }
 
 async function updateNavCount() {
-  const total = await fetchNavCount();
+  const data = await fetchStats();
   const el = document.getElementById('nav-count');
-  if (total != null) el.textContent = total + ' services';
+  if (data && el) el.textContent = (data.total_services || data.active_services || 0) + ' services';
 }
 
 // ── REGISTER ──
@@ -795,18 +793,18 @@ function showResult(el, type, msg) {
 
 // ── INIT ──
 (async function init() {
-  // Stats count (quick, from /stats — no catalog needed)
-  const navCountPromise = fetchNavCount();
-  updateNavCount();
-  setInterval(updateNavCount, 30000);
-
-  // Update stat-services immediately from /stats without waiting for catalog
-  navCountPromise.then(count => {
-    if (count != null) {
-      const el = document.getElementById('stat-services');
-      if (el) el.textContent = count.toLocaleString();
-    }
+  // Stats — populate immediately from /stats (fast, no catalog needed)
+  const statsPromise = fetchStats();
+  statsPromise.then(data => {
+    if (!data) return;
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.textContent = val; };
+    setEl('stat-services', (data.total_services || data.active_services || 0).toLocaleString());
+    setEl('stat-categories', data.categories || 0);
+    // avg trust not in /stats — leave for catalog
+    const navEl = document.getElementById('nav-count');
+    if (navEl) navEl.textContent = (data.total_services || data.active_services || 0) + ' services';
   });
+  setInterval(updateNavCount, 30000);
 
   // Full catalog
   const services = await fetchCatalog();
@@ -832,8 +830,8 @@ function showResult(el, type, msg) {
       if (el) el.textContent = '0';
     });
     // stat-services already set from /stats above; only reset if /stats also returned nothing
-    navCountPromise.then(count => {
-      if (count == null) {
+    statsPromise.then(data => {
+      if (!data || (!data.total_services && !data.active_services)) {
         const el = document.getElementById('stat-services');
         if (el) el.textContent = '0';
       }
