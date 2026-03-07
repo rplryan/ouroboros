@@ -800,7 +800,7 @@ function showResult(el, type, msg) {
     const setEl = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.textContent = val; };
     setEl('stat-services', (data.total_services || data.active_services || 0).toLocaleString());
     setEl('stat-categories', data.categories || 0);
-    // avg trust not in /stats — leave for catalog
+    if (data.avg_trust_score != null) setEl('stat-trust', data.avg_trust_score + '/100');
     const navEl = document.getElementById('nav-count');
     if (navEl) navEl.textContent = (data.total_services || data.active_services || 0) + ' services';
   });

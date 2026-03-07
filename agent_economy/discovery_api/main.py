@@ -1731,10 +1731,13 @@ async def stats() -> JSONResponse:
         total = len(_registry)
         active = sum(1 for e in _registry if e.get("status") != "inactive")
         categories = len(set(e.get("category", "other") for e in _registry))
+        trust_scores = [e.get("trust_score", 0) for e in _registry if e.get("trust_score") is not None]
+        avg_trust = round(sum(trust_scores) / len(trust_scores)) if trust_scores else 0
         return JSONResponse({
             "total_services": total,
             "active_services": active,
             "categories": categories,
+            "avg_trust_score": avg_trust,
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as exc:
