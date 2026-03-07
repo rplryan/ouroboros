@@ -85,7 +85,7 @@ except ImportError:
             "providers_url": "https://mru-oracle.com/trust/providers",
             "spec": "ERC-8004",
             "checks": ["OFAC-SDN", "EU-Sanctions", "UN-Consolidated"],
-            "record_count": 1100000,
+            "record_count": 2880000,
             "status": "active",
             "added_at": "2026-03-06T19:00:00Z",
             "github_issue": "https://github.com/rplryan/x402-discovery-mcp/issues/4"
@@ -1380,7 +1380,7 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="x402 Service Discovery API",
-    version="3.7.0",
+    version="3.7.3",
     description=(
         "Discover x402-payable endpoints with quality signals. "
         "Each discovery query costs $0.010 USDC on Base."
@@ -1394,6 +1394,16 @@ app = FastAPI(
 if _streamable_mcp_asgi is not None:
     app.mount("/mcp", _streamable_mcp_asgi)
     log.info("Streamable HTTP MCP mounted at /mcp")
+
+# Redirect old Render URL to canonical domain
+@app.middleware("http")
+async def redirect_old_domain(request: Request, call_next):
+    host = request.headers.get("host", "")
+    if "x402scout.onrender.com" in host or "x402-discovery-api.onrender.com" in host:
+        new_url = str(request.url).replace(host, "x402scout.com")
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=new_url, status_code=301)
+    return await call_next(request)
 
 # ---------------------------------------------------------------------------
 # GET / — free
@@ -2193,9 +2203,29 @@ async def list_trust_providers():
     in a discovery attestation. Any ERC-8004-compliant provider can be listed here.
     Each provider publishes a JWKS endpoint for offline signature verification.
     """
+    providers = list(KNOWN_TRUST_PROVIDERS)
+    # Enrich each provider with live metadata if they have a providers_url
+    for i, provider in enumerate(providers):
+        providers_url = provider.get("providers_url")
+        if providers_url:
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    resp = await client.get(providers_url)
+                    if resp.status_code == 200:
+                        live_data = resp.json()
+                        # Look for record_count or unique_entities in the response
+                        if isinstance(live_data, dict):
+                            providers_info = live_data.get("providers", [live_data])
+                            for p in (providers_info if isinstance(providers_info, list) else [providers_info]):
+                                rc = p.get("record_count") or p.get("unique_entities") or p.get("total_records")
+                                if rc and isinstance(rc, (int, float)):
+                                    providers[i] = {**provider, "record_count": int(rc)}
+                                    break
+            except Exception:
+                pass  # Use static fallback
     return {
-        "providers": KNOWN_TRUST_PROVIDERS,
-        "count": len(KNOWN_TRUST_PROVIDERS),
+        "providers": providers,
+        "count": len(providers),
         "spec": "https://github.com/coinbase/x402/issues/1375",
         "note": "To add a provider, open an issue or PR at https://github.com/rplryan/x402-discovery-mcp"
     }
@@ -2205,7 +2235,7 @@ _SERVER_CARD_DATA = {
     "serverInfo": {
         "name": "x402-discovery-mcp",
         "displayName": "x402 Service Discovery",
-        "version": "3.7.0",
+        "version": "3.7.3",
         "description": "The index for the x402 agent economy. Discover, route, and verify 251+ live x402-payable services across Base mainnet. Quality signals, health monitoring, trust attestations, and payment facilitator compatibility — everything an AI agent needs to pay its way through the web.",
         "homepage": "https://github.com/rplryan/x402-discovery-mcp",
         "icon": "https://raw.githubusercontent.com/rplryan/x402-discovery-mcp/main/icon.png"

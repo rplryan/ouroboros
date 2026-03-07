@@ -21458,7 +21458,15 @@
     "price_usd": 0.01,
     "network": "eip155:8453",
     "asset_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    "tags": ["x402", "mcp", "elizaos", "agent", "gateway", "usdc", "multi-server"],
+    "tags": [
+      "x402",
+      "mcp",
+      "elizaos",
+      "agent",
+      "gateway",
+      "usdc",
+      "multi-server"
+    ],
     "registered_at": "2026-03-07T12:00:00Z",
     "query_count": 0,
     "uptime_pct": null,
@@ -21468,7 +21476,12 @@
     "facilitator_compatible": true,
     "recommended_facilitator": "https://x402.org/facilitator",
     "facilitator_count": 0,
-    "capability_tags": ["mcp", "agent", "gateway", "payment"],
+    "capability_tags": [
+      "mcp",
+      "agent",
+      "gateway",
+      "payment"
+    ],
     "source": "manual_seed",
     "input_format": "application/json",
     "output_format": "application/json",
@@ -21478,5 +21491,159 @@
     "github_url": "https://github.com/elizaOS/mcp-gateway",
     "trust_score": 75,
     "first_party_flag": false
+  },
+  {
+    "url": "https://mru-oracle.com/compliance/watchlist",
+    "name": "SENTINEL Watchlist Screening",
+    "description": "Screen entities against 2.9M+ watchlist records (sanctions, PEPs, debarment, wanted, crypto addresses)",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.001,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/compliance/wallet",
+    "name": "SENTINEL Wallet Compliance",
+    "description": "Crypto wallet AML/CFT screening - OFAC, EU Sanctions, crypto address watchlists",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.001,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/compliance/wallet-entity",
+    "name": "SENTINEL Wallet Entity Screening",
+    "description": "Combined wallet + entity screening for comprehensive VASP Travel Rule compliance",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.002,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/compliance/jurisdiction",
+    "name": "SENTINEL Jurisdiction Risk",
+    "description": "FATF grey/black list jurisdiction risk assessment for 179 countries",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.001,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/compliance/mauritius",
+    "name": "SENTINEL Mauritius Compliance",
+    "description": "Mauritius-specific AML/CFT intelligence: FSC licensees, ICIJ offshore leaks, adverse media",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.001,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/intelligence/due-diligence",
+    "name": "SENTINEL Due Diligence",
+    "description": "Multi-database fusion due diligence - replaces 5-20 individual API calls",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.008,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/intelligence/transaction-screen",
+    "name": "SENTINEL Transaction Screen",
+    "description": "Cross-border payment pre-screening with compound intelligence",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.01,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/intelligence/country-brief",
+    "name": "SENTINEL Country Brief",
+    "description": "Country risk briefings for investment decisions - 179 countries",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.005,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/intelligence/network-scan",
+    "name": "SENTINEL Network Scan",
+    "description": "Entity network analysis and beneficial ownership research",
+    "category": "compliance",
+    "trust_score": 95,
+    "price_usd": 0.015,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/trust/attest",
+    "name": "SENTINEL Trust Attestation (FREE)",
+    "description": "Free cryptographically signed compliance attestations for x402 payment addresses",
+    "category": "trust",
+    "trust_score": 98,
+    "price_usd": 0.0,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/trust/verify",
+    "name": "SENTINEL URL Verification (FREE)",
+    "description": "Free x402 service endpoint verification with base64url-encoded URL path param",
+    "category": "trust",
+    "trust_score": 98,
+    "price_usd": 0.0,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/fuel",
+    "name": "SENTINEL Mauritius Fuel Prices",
+    "description": "Live Mauritius fuel price feeds",
+    "category": "data",
+    "trust_score": 90,
+    "price_usd": 0.001,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/semdex",
+    "name": "SENTINEL SEMDEX Stock Index",
+    "description": "Mauritius SEMDEX stock index live data",
+    "category": "data",
+    "trust_score": 90,
+    "price_usd": 0.001,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
+  },
+  {
+    "url": "https://mru-oracle.com/macro",
+    "name": "SENTINEL Mauritius Macroeconomic Data",
+    "description": "Mauritius macro indicators, monetary policy, 812+ government datasets",
+    "category": "data",
+    "trust_score": 90,
+    "price_usd": 0.002,
+    "network": "base",
+    "first_party_flag": false,
+    "featured": false
   }
 ]
