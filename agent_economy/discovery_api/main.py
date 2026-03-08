@@ -22,7 +22,7 @@ import collections
 import ipaddress
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -306,6 +306,7 @@ REGISTRY_PATH: Path = _PERSISTENT_DISK / "catalog.json" if _PERSISTENT_DISK.exis
 DB_PATH: Path = Path(__file__).parent / "health.db"
 
 HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
+HEALTH_CONCURRENCY: int = 50  # max concurrent health pings
 SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
 
 # ---------------------------------------------------------------------------
@@ -491,20 +492,18 @@ def _enrich_with_quality(entry: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _background_health_checker() -> None:
-    """Ping all registered endpoints every 5 minutes and record results in SQLite."""
-    while True:
-        await asyncio.sleep(HEALTH_CHECK_INTERVAL_SECS)
-        entries = list(_registry)
-        log.info("Background health check: checking %d endpoints", len(entries))
-        for entry in entries:
-            url = entry.get("url", "")
-            if not url:
-                continue
+    """Ping all registered endpoints every 15 minutes with bounded concurrency."""
+    sem = asyncio.Semaphore(HEALTH_CONCURRENCY)
+
+    async def _check_one(entry: dict, client: httpx.AsyncClient) -> None:
+        url = entry.get("url", "")
+        if not url:
+            return
+        async with sem:
             try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    t0 = time.monotonic()
-                    resp = await client.head(url, follow_redirects=True)
-                    latency_ms = int((time.monotonic() - t0) * 1000)
+                t0 = time.monotonic()
+                resp = await client.head(url, follow_redirects=True)
+                latency_ms = int((time.monotonic() - t0) * 1000)
                 is_up = resp.status_code < 500
                 http_status = resp.status_code
             except Exception as exc:
@@ -512,30 +511,54 @@ async def _background_health_checker() -> None:
                 is_up = False
                 latency_ms = None
                 http_status = None
-            _record_health(url, is_up, latency_ms, http_status)
-        # Refresh in-memory registry quality fields
+        _record_health(url, is_up, latency_ms, http_status)
+
+    while True:
+        await asyncio.sleep(HEALTH_CHECK_INTERVAL_SECS)
+        entries = list(_registry)
+        log.info("Background health check: checking %d endpoints", len(entries))
+
+        # Single shared client for the entire cycle — massive memory saving
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await asyncio.gather(*[_check_one(e, client) for e in entries], return_exceptions=True)
+
+        # Prune SQLite: keep only last 7 days
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                deleted = conn.execute(
+                    "DELETE FROM endpoint_health WHERE checked_at < ?", (cutoff,)
+                ).rowcount
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.execute("VACUUM")
+            log.info("Pruned %d old health rows", deleted)
+        except Exception as exc:
+            log.warning("Health DB pruning failed: %s", exc)
+
+        # Refresh in-memory registry quality fields (reuse stats, no double-call)
         for reg_entry in _registry:
             url = reg_entry.get("url", "")
-            if url:
-                stats = _get_health_stats(url)
-                last = _get_last_check(url)
-                reg_entry["uptime_pct"] = stats["uptime_pct"]
-                reg_entry["avg_latency_ms"] = stats["avg_latency_ms"]
-                reg_entry["last_health_check"] = last["checked_at"] if last else None
-                reg_entry["health_status"] = _compute_health_status(stats, last)
-                stats_for_ts = _get_health_stats(reg_entry.get("url", ""))
-                reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, stats_for_ts)
-                # Refresh payment metadata once every 24h
-                last_meta = reg_entry.get("x402_metadata_verified_at")
-                meta_age_h = (
-                    (datetime.now(timezone.utc) - datetime.fromisoformat(last_meta)).total_seconds() / 3600
-                    if last_meta else 999
-                )
-                if meta_age_h > 24:
-                    meta = await _extract_x402_payment_metadata(url)
-                    if meta:
-                        reg_entry.update(meta)
-                        reg_entry["x402_metadata_verified_at"] = datetime.now(timezone.utc).isoformat()
+            if not url:
+                continue
+            stats = _get_health_stats(url)
+            last = _get_last_check(url)
+            reg_entry["uptime_pct"] = stats["uptime_pct"]
+            reg_entry["avg_latency_ms"] = stats["avg_latency_ms"]
+            reg_entry["last_health_check"] = last["checked_at"] if last else None
+            reg_entry["health_status"] = _compute_health_status(stats, last)
+            reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, stats)  # reuse stats
+            # Refresh payment metadata once every 24h
+            last_meta = reg_entry.get("x402_metadata_verified_at")
+            meta_age_h = (
+                (datetime.now(timezone.utc) - datetime.fromisoformat(last_meta)).total_seconds() / 3600
+                if last_meta else 999
+            )
+            if meta_age_h > 24:
+                meta = await _extract_x402_payment_metadata(url)
+                if meta:
+                    reg_entry.update(meta)
+                    reg_entry["x402_metadata_verified_at"] = datetime.now(timezone.utc).isoformat()
+
         _save_registry(_registry)
         log.info("Background health check complete")
 
