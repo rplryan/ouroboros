@@ -195,6 +195,10 @@ class BackgroundConsciousness:
                 if self._should_run_x402_sweep():
                     self._run_x402_sweep()
 
+                # Full daily sweep check
+                if self._should_run_daily_sweep():
+                    self._run_daily_sweep()
+
             # ── THINK ────────────────────────────────────────────────────
             try:
                 self._think()
@@ -443,6 +447,53 @@ class BackgroundConsciousness:
             "  - Always send_owner_message with: total new services registered, total skipped (already in catalog),\n"
             "    total rejected (not live), and list of new service names/URLs registered\n"
             "  - If 0 new services found: still send a brief 'sweep complete, catalog up to date' message\n"
+        )
+
+    def _should_run_daily_sweep(self) -> bool:
+        """Check if the full daily sweep is due (every ~20 hours)."""
+        try:
+            import re
+            scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
+            if not scratchpad_path.exists():
+                return True
+            content = scratchpad_path.read_text(encoding="utf-8")
+            m = re.search(r'last_daily_sweep_utc:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})', content)
+            if not m:
+                return True  # No record → sweep is overdue
+            from datetime import datetime, timezone
+            last_sweep = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            hours_since = (now - last_sweep).total_seconds() / 3600
+            return hours_since >= 20.0
+        except Exception:
+            log.debug("Failed to check daily sweep timestamp", exc_info=True)
+            return False
+
+    def _run_daily_sweep(self) -> None:
+        """Inject a full daily sweep observation so the LLM handles it in _think()."""
+        self.inject_observation(
+            "DAILY_SWEEP_DUE: More than 20 hours since last full daily sweep. "
+            "This is a scheduled automatic check — perform it NOW without waiting for owner instruction.\n\n"
+            "Run a complete daily sweep covering ALL of these:\n"
+            "1. CATALOG HEALTH: GET https://x402scout.com/stats — is the API up? How many services? "
+            "   Also check /catalog for any obvious issues. "
+            "   Compare service count to scratchpad baseline — if dropped >10%, investigate why.\n"
+            "2. LANDING PAGE: GET https://x402scout.com — are the stats (service count, categories, trust score) "
+            "   displaying correctly, not showing dashes?\n"
+            "3. PR STATUS: Check all open PRs — anthropics/claude-cookbooks#406, "
+            "   murrlincoln/x402-gitbook#10. Any new reviews, comments, or merges? "
+            "   Report any changes to owner.\n"
+            "4. GITHUB ISSUES: Check rplryan/x402-discovery-mcp for any new comments or issues.\n"
+            "5. WALLET: Check BASE wallet 0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA — "
+            "   current USDC balance and recent transactions.\n"
+            "6. SCANNER HEALTH: Check that the auto-scanner ran recently "
+            "   (service count should be growing or stable, not dropping).\n"
+            "7. ECOSYSTEM NEWS: Quick search for new x402-related GitHub repos, npm packages, "
+            "   or announcements. Any new competitors or interesting developments?\n\n"
+            "After completing ALL checks:\n"
+            "- Send owner a summary report via send_owner_message\n"
+            "- Update scratchpad: set last_daily_sweep_utc to current UTC ISO timestamp\n"
+            "- If any issue found (API down, service count dropped, PR merged): call it out clearly\n"
         )
 
     # -------------------------------------------------------------------
