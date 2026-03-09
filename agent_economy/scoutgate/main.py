@@ -24,7 +24,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 load_dotenv()
@@ -354,6 +354,124 @@ async def startup() -> None:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root() -> HTMLResponse:
+    """ScoutGate landing page."""
+    total_apis = len(APIS)
+    total_calls = sum(a.total_calls for a in APIS.values())
+    total_revenue = round(sum(a.total_revenue_usd for a in APIS.values()), 4)
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScoutGate — x402 API Monetization Gateway</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: #0a0a0a; color: #e0e0e0; font-family: 'Courier New', monospace; min-height: 100vh; }}
+  .header {{ background: #0d1a0d; border-bottom: 1px solid #1a4a1a; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }}
+  .logo {{ font-size: 28px; color: #39ff14; font-weight: bold; letter-spacing: 2px; }}
+  .tagline {{ color: #888; font-size: 13px; }}
+  .hero {{ padding: 60px 40px 40px; max-width: 860px; margin: 0 auto; }}
+  h1 {{ font-size: 36px; color: #39ff14; margin-bottom: 12px; }}
+  .sub {{ color: #aaa; font-size: 16px; margin-bottom: 40px; line-height: 1.6; }}
+  .stats {{ display: flex; gap: 24px; margin-bottom: 48px; flex-wrap: wrap; }}
+  .stat {{ background: #111; border: 1px solid #1a4a1a; border-radius: 8px; padding: 16px 24px; min-width: 140px; }}
+  .stat-val {{ font-size: 28px; color: #39ff14; font-weight: bold; }}
+  .stat-label {{ font-size: 12px; color: #666; margin-top: 4px; }}
+  .section {{ margin-bottom: 48px; }}
+  h2 {{ color: #39ff14; font-size: 18px; margin-bottom: 16px; border-bottom: 1px solid #1a4a1a; padding-bottom: 8px; }}
+  .steps {{ display: flex; flex-direction: column; gap: 16px; }}
+  .step {{ background: #111; border: 1px solid #222; border-radius: 8px; padding: 20px; }}
+  .step-num {{ color: #39ff14; font-size: 12px; font-weight: bold; margin-bottom: 8px; }}
+  .step-title {{ color: #fff; font-size: 15px; margin-bottom: 8px; }}
+  pre {{ background: #0d0d0d; border: 1px solid #222; border-radius: 6px; padding: 14px; overflow-x: auto; font-size: 12px; color: #ccc; margin-top: 8px; line-height: 1.5; }}
+  .highlight {{ color: #39ff14; }}
+  .links {{ display: flex; gap: 16px; flex-wrap: wrap; }}
+  a.btn {{ display: inline-block; background: #0d1a0d; border: 1px solid #39ff14; color: #39ff14; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 13px; transition: background 0.2s; }}
+  a.btn:hover {{ background: #1a3a1a; }}
+  .footer {{ text-align: center; color: #444; font-size: 12px; padding: 40px; border-top: 1px solid #1a1a1a; margin-top: 40px; }}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <div class="logo">⬡ ScoutGate</div>
+    <div class="tagline">by x402Scout — the supply-side onboarding ramp for the x402 ecosystem</div>
+  </div>
+</div>
+<div class="hero">
+  <h1>Wrap any API with x402 payments in 30 seconds.</h1>
+  <p class="sub">Paste your API URL. Set a price. Get a proxy URL that handles 402 headers, EIP-712 signing, and on-chain USDC settlement on Base — automatically. Your API is instantly listed in the <a href="https://x402scout.com" style="color:#39ff14">x402Scout catalog</a>.</p>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-val">{total_apis}</div>
+      <div class="stat-label">APIs registered</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{total_calls}</div>
+      <div class="stat-label">paid calls proxied</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">${total_revenue}</div>
+      <div class="stat-label">USDC settled on-chain</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">STEP 1 — Register your API</div>
+        <div class="step-title">POST your existing API URL, wallet, and price</div>
+        <pre>curl -X POST https://x402-scoutgate.onrender.com/register \\
+  -H "Content-Type: application/json" \\
+  -d '{{
+    <span class="highlight">"api_url"</span>: "https://your-api.com",
+    <span class="highlight">"wallet_address"</span>: "0xYourWalletAddress",
+    <span class="highlight">"price_usd"</span>: 0.01,
+    "name": "My API",
+    "description": "Does something useful"
+  }}'</pre>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 2 — Get your proxy URL</div>
+        <div class="step-title">Response includes a ready-to-share proxy URL</div>
+        <pre>{{
+  "api_id": "abc123",
+  <span class="highlight">"proxy_url"</span>: "https://x402-scoutgate.onrender.com/api/abc123",
+  "registered_in_catalog": true
+}}</pre>
+      </div>
+      <div class="step">
+        <div class="step-num">STEP 3 — Share it</div>
+        <div class="step-title">Callers without payment get a 402. Callers with valid USDC authorization on Base get your real response.</div>
+        <pre># No payment → 402 Payment Required
+GET https://x402-scoutgate.onrender.com/api/abc123/endpoint
+
+# With X-PAYMENT header → your API response + on-chain settlement</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Quick links</h2>
+    <div class="links">
+      <a class="btn" href="/docs">API Docs</a>
+      <a class="btn" href="/apis">Registered APIs</a>
+      <a class="btn" href="/stats">Stats</a>
+      <a class="btn" href="https://x402scout.com">x402Scout Catalog</a>
+      <a class="btn" href="https://github.com/rplryan/x402-discovery-mcp">GitHub</a>
+    </div>
+  </div>
+</div>
+<div class="footer">ScoutGate is part of the x402Scout ecosystem &mdash; the discovery layer for agent-native commerce on Base.</div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 
 
 @app.get("/health")
