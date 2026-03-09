@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.3.5 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.3.6 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,17 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.3.6 -- ScoutGate: API Monetization Gateway
+- **New product: ScoutGate** (`agent_economy/scoutgate/`) — hosted reverse proxy that wraps any existing API in x402 payment logic in seconds. No x402 protocol knowledge required.
+- **Live at:** https://x402-scoutgate.onrender.com
+- **Features**: POST /register to get a proxy URL, automatic x402 402-response generation, EIP-712 payment verification, CDP-based on-chain settlement to any wallet, 1% fee, auto-listing in x402Scout catalog
+- **Persistent storage**: 1GB Render disk at `/data/apis.json` — registered APIs survive restarts
+- **Browser UI**: GET /register serves a registration form (NVG green on black aesthetic)
+- **E2E verified on Base mainnet**: Real USDC transfer confirmed on-chain during launch
+- **Products section on x402scout.com**: Updated landing page now shows all 3 suite products (x402Scout, ScoutGate, RouteNet)
+- **x402scout.com/register**: Redirects to ScoutGate registration form
+- **Security**: `/apis` and `/stats` endpoints removed to prevent competitor scraping of customer data
 
 ### v6.3.5 -- Hardcoded Startup Recurring Task Scheduler
 - **`colab_launcher.py`**: Added `_schedule_overdue_recurring_tasks()` — runs at every startup, checks scratchpad timestamps, and directly enqueues any overdue daily tasks (x402 ecosystem sweep, GitHub + PR monitor, social listening) if they haven't run in the last 8h
