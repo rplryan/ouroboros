@@ -360,8 +360,6 @@ async def startup() -> None:
 async def root() -> HTMLResponse:
     """ScoutGate landing page."""
     total_apis = len(APIS)
-    total_calls = sum(a.total_calls for a in APIS.values())
-    total_revenue = round(sum(a.total_revenue_usd for a in APIS.values()), 4)
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -411,14 +409,6 @@ async def root() -> HTMLResponse:
       <div class="stat-val">{total_apis}</div>
       <div class="stat-label">APIs registered</div>
     </div>
-    <div class="stat">
-      <div class="stat-val">{total_calls}</div>
-      <div class="stat-label">paid calls proxied</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">${total_revenue}</div>
-      <div class="stat-label">USDC settled on-chain</div>
-    </div>
   </div>
 
   <div class="section">
@@ -461,7 +451,6 @@ GET https://x402-scoutgate.onrender.com/api/abc123/endpoint
     <h2>Quick links</h2>
     <div class="links">
       <a class="btn" href="/docs">API Docs</a>
-      <a class="btn" href="/apis">Registered APIs</a>
       <a class="btn" href="/stats">Stats</a>
       <a class="btn" href="https://x402scout.com">x402Scout Catalog</a>
       <a class="btn" href="https://github.com/rplryan/x402-discovery-mcp">GitHub</a>
@@ -700,14 +689,8 @@ async def register_api(registration: APIRegistration) -> APIRegistrationResponse
 
 
 @app.get("/apis")
-async def list_apis() -> list[dict[str, Any]]:
-    """List all registered APIs. Wallet addresses are redacted for privacy."""
-    result = []
-    for api in APIS.values():
-        entry = api.model_dump()
-        entry.pop("wallet_address", None)
-        result.append(entry)
-    return result
+async def list_apis() -> JSONResponse:
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 @app.get("/docs-redirect")
