@@ -435,7 +435,7 @@ footer{
         <li>Register in one API call — URL + wallet + price</li>
         <li>Handles EIP-712 signing, 402 headers, USDC settlement</li>
         <li>Real on-chain settlements verified on Base mainnet</li>
-        <li>1% fee per transaction — you keep the rest</li>
+        <li>2.5% fee per transaction (min $0.003) — you keep the rest</li>
       </ul>
       <div class="product-footer">
         <a href="https://x402-scoutgate.onrender.com" target="_blank" rel="noopener" class="product-link">Try ScoutGate →</a>
