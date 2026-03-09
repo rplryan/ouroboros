@@ -447,10 +447,18 @@ async def _proxy_request(
     if not payment_header:
         return _payment_required_response(api_id, api.price_usd, request)
 
-    valid, reason = await _verify_and_settle_payment(payment_header, api.price_usd)
+    valid, tx_hash = await _verify_and_settle_payment(payment_header, api.price_usd)
     if not valid:
-        log.info("Payment rejected for %s: %s", api_id, reason)
+        log.info("Payment rejected for %s: %s", api_id, tx_hash)
         return _payment_required_response(api_id, api.price_usd, request)
+
+    # Extract payer address from payment header for X-PAYMENT-RESPONSE
+    payer_address = ""
+    try:
+        _pd = json.loads(base64.b64decode(payment_header + "==").decode())
+        payer_address = _pd.get("payload", {}).get("authorization", {}).get("from", "")
+    except Exception:
+        pass
 
     # --- build upstream request ---
     upstream_url = f"{api.api_url}/{path}" if path else api.api_url
@@ -513,6 +521,14 @@ async def _proxy_request(
         if k.lower() not in excluded_headers
     }
     response_headers["X-ScoutGate-Api-Id"] = api_id
+    response_headers["X-PAYMENT-RESPONSE"] = base64.b64encode(
+        json.dumps({
+            "success": True,
+            "transaction": tx_hash,
+            "network": "base-mainnet",
+            "payer": payer_address,
+        }).encode()
+    ).decode()
 
     return Response(
         content=upstream_resp.content,
