@@ -39,8 +39,8 @@ log = logging.getLogger("scoutgate")
 SCOUTGATE_WALLET: str = os.environ.get(
     "SCOUTGATE_WALLET", "0xDBBe14C418466Bf5BF0ED7638B4E6849B852aFfA"
 )
-SCOUTGATE_FEE_PCT: float = 0.005   # 0.5 %
-SCOUTGATE_FEE_MIN: float = 0.001   # $0.001 minimum
+SCOUTGATE_FEE_PCT: float = 0.025   # 2.5 %
+SCOUTGATE_FEE_MIN: float = 0.003   # $0.003 minimum
 
 USDC_BASE_ADDRESS: str = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 

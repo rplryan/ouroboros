@@ -59,10 +59,10 @@ With valid x402 payment header → full API response proxied through
 
 ## Revenue model
 
-ScoutGate takes **1%** of each settled payment. Payments flow:
+ScoutGate takes a **2.5% fee (min $0.003 per call)** of each settled payment. Payments flow:
 ```
-Agent → ScoutGate → CDP Settle → API Owner Wallet (99%)
-                              → ScoutGate Wallet (1%)
+Agent → ScoutGate → CDP Settle → API Owner Wallet (97.5%)
+                              → ScoutGate Wallet (2.5%)
 ```
 
 ## Environment variables
