@@ -529,6 +529,8 @@ async def _proxy_request(
             "payer": payer_address,
         }).encode()
     ).decode()
+    response_headers["x-payment-response"] = response_headers["X-PAYMENT-RESPONSE"]
+    response_headers["Access-Control-Expose-Headers"] = "X-PAYMENT-RESPONSE, X-SCOUTGATE-API-ID"
 
     return Response(
         content=upstream_resp.content,
