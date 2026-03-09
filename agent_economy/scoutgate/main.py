@@ -12,9 +12,13 @@ import base64
 import json
 import logging
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+
+from eth_account import Account
+from eth_account.messages import encode_typed_data
 
 import httpx
 from dotenv import load_dotenv
@@ -124,7 +128,7 @@ def _payment_required_response(api_id: str, price_usd: float, request: Request) 
     amount_usdc = int(price_usd * 1_000_000)  # USDC has 6 decimals
     payment_requirements = {
         "scheme": "exact",
-        "network": "base-mainnet",
+        "network": "eip155:8453",
         "maxAmountRequired": str(amount_usdc),
         "resource": str(request.url),
         "description": f"ScoutGate proxy call — {api_id}",
@@ -144,72 +148,149 @@ def _payment_required_response(api_id: str, price_usd: float, request: Request) 
     )
 
 
-async def _verify_payment(
-    payment_header: str, api_id: str, price_usd: float
+def _generate_cdp_jwt(method: str, path: str) -> str | None:
+    """Generate a CDP JWT for authenticating against api.cdp.coinbase.com."""
+    cdp_key_id = os.environ.get("CDP_API_KEY_ID", "")
+    cdp_key_secret = os.environ.get("CDP_API_KEY_SECRET", "")
+    if not cdp_key_id or not cdp_key_secret:
+        return None
+    try:
+        from cdp.auth.utils.jwt import generate_jwt, JwtOptions
+        return generate_jwt(JwtOptions(
+            api_key_id=cdp_key_id,
+            api_key_secret=cdp_key_secret,
+            request_method=method,
+            request_host="api.cdp.coinbase.com",
+            request_path=path,
+        ))
+    except Exception as exc:
+        log.warning("CDP JWT generation failed: %s", exc)
+        return None
+
+
+async def _verify_and_settle_payment(
+    payment_header: str, price_usd: float
 ) -> tuple[bool, str]:
-    """Verify x402 X-PAYMENT header. Returns (valid, txhash_or_error)."""
+    """Verify EIP-712 signature and settle via CDP. Returns (valid, tx_hash_or_error)."""
     if not payment_header:
         return False, "No X-PAYMENT header"
 
     try:
-        # base64 decode with padding tolerance
-        padded = payment_header + "=="
-        payload = json.loads(base64.b64decode(padded).decode())
+        data = json.loads(base64.b64decode(payment_header + "==").decode())
 
-        # Accept x402Version 1 or 2 structure
-        has_version = "x402Version" in payload
-        has_payload = "payload" in payload
-        if not (has_version or has_payload):
-            return False, "Invalid payment payload structure"
+        payload = data.get("payload", {})
+        signature = payload.get("signature", "")
+        auth = payload.get("authorization", {})
 
-        return True, "payment_accepted"
-    except Exception as exc:
-        return False, f"Payment parse error: {exc}"
+        # Check payment expiry
+        valid_before = int(auth.get("validBefore", 0))
+        if valid_before > 0 and int(time.time()) > valid_before:
+            return False, "Payment expired"
 
-
-async def _settle_payment(
-    payment_header: str, price_usd: float, resource_url: str
-) -> dict[str, Any]:
-    """Attempt CDP settle. Non-blocking — proxy call proceeds regardless."""
-    cdp_key_id = os.environ.get("CDP_API_KEY_ID", "")
-    if not cdp_key_id:
-        return {"settled": False, "reason": "no_cdp_credentials"}
-
-    try:
-        padded = payment_header + "=="
-        payment_payload = json.loads(base64.b64decode(padded).decode())
-        amount_usdc = int(price_usd * 1_000_000)
-
-        settle_body = {
-            "paymentPayload": payment_payload,
-            "paymentRequirements": {
-                "scheme": "exact",
-                "network": "base-mainnet",
-                "amount": str(amount_usdc),
-                "resource": resource_url,
-                "description": "ScoutGate proxy",
-                "mimeType": "application/json",
-                "payTo": SCOUTGATE_WALLET,
-                "maxTimeoutSeconds": 300,
-                "asset": USDC_BASE_ADDRESS,
-                "extra": {"name": "USD Coin", "version": "2"},
+        # Reconstruct EIP-712 typed data for signature verification
+        nonce_hex: str = auth.get("nonce", "0x" + "0" * 64)
+        nonce_bytes = bytes.fromhex(nonce_hex[2:] if nonce_hex.startswith("0x") else nonce_hex)
+        structured = {
+            "domain": {
+                "name": "USD Coin",
+                "version": "2",
+                "chainId": 8453,
+                "verifyingContract": USDC_BASE_ADDRESS,
+            },
+            "message": {
+                "from": auth.get("from", ""),
+                "to": auth.get("to", SCOUTGATE_WALLET),
+                "value": int(auth.get("value", 0)),
+                "validAfter": int(auth.get("validAfter", 0)),
+                "validBefore": int(auth.get("validBefore", 0)),
+                "nonce": nonce_bytes,
+            },
+            "primaryType": "TransferWithAuthorization",
+            "types": {
+                "EIP712Domain": [
+                    {"name": "name", "type": "string"},
+                    {"name": "version", "type": "string"},
+                    {"name": "chainId", "type": "uint256"},
+                    {"name": "verifyingContract", "type": "address"},
+                ],
+                "TransferWithAuthorization": [
+                    {"name": "from", "type": "address"},
+                    {"name": "to", "type": "address"},
+                    {"name": "value", "type": "uint256"},
+                    {"name": "validAfter", "type": "uint256"},
+                    {"name": "validBefore", "type": "uint256"},
+                    {"name": "nonce", "type": "bytes32"},
+                ],
             },
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                "https://api.cdp.coinbase.com/platform/v2/x402/settle",
-                json=settle_body,
-                headers={
-                    "Content-Type": "application/json",
-                    "X-CDP-Api-Key": cdp_key_id,
+        msg = encode_typed_data(full_message=structured)
+        recovered = Account.recover_message(msg, signature=signature)
+        payer_address = auth.get("from", "")
+
+        if recovered.lower() != payer_address.lower():
+            log.warning("Signature mismatch: recovered %s, expected %s", recovered, payer_address)
+            return False, "Signature mismatch"
+
+        # Verify amount
+        expected_amount = int(price_usd * 1_000_000)
+        signed_amount = int(auth.get("value", 0))
+        if signed_amount < expected_amount:
+            log.warning("Underpayment: signed %d, required %d", signed_amount, expected_amount)
+            return False, "Underpayment"
+
+        # Verify destination wallet
+        if auth.get("to", "").lower() != SCOUTGATE_WALLET.lower():
+            log.warning("Wrong recipient: %s", auth.get("to"))
+            return False, "Wrong recipient"
+
+        log.info("Payment verified: %s paid %s USDC", payer_address, signed_amount / 1e6)
+
+        # Attempt CDP settle (V2 format)
+        try:
+            v2_reqs = {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "asset": USDC_BASE_ADDRESS,
+                "amount": str(expected_amount),
+                "payTo": SCOUTGATE_WALLET,
+                "maxTimeoutSeconds": 60,
+                "extra": {"name": "USD Coin", "version": "2"},
+            }
+            settle_payload = {
+                "x402Version": 2,
+                "paymentPayload": {
+                    "x402Version": 2,
+                    "payload": data.get("payload", {}),
+                    "accepted": v2_reqs,
                 },
-            )
-            if resp.status_code == 200:
-                return {"settled": True, "response": resp.json()}
-            return {"settled": False, "status": resp.status_code, "body": resp.text[:200]}
+                "paymentRequirements": v2_reqs,
+            }
+            settle_headers: dict[str, str] = {"Content-Type": "application/json"}
+            jwt_token = _generate_cdp_jwt("POST", "/platform/v2/x402/settle")
+            if jwt_token:
+                settle_headers["Authorization"] = f"Bearer {jwt_token}"
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                settle_resp = await client.post(
+                    "https://api.cdp.coinbase.com/platform/v2/x402/settle",
+                    json=settle_payload,
+                    headers=settle_headers,
+                )
+                if settle_resp.status_code == 200:
+                    tx_hash = settle_resp.json().get("transaction", "settled")
+                    log.info("CDP settle success: tx=%s payer=%s", tx_hash, payer_address)
+                    return True, tx_hash
+                log.warning("CDP settle returned %s: %s", settle_resp.status_code, settle_resp.text[:300])
+        except Exception as settle_exc:
+            log.warning("CDP settle error (non-fatal): %s", settle_exc)
+
+        # Local verification passed even if settle failed
+        return True, "payment_verified"
+
     except Exception as exc:
-        return {"settled": False, "error": str(exc)}
+        log.warning("Payment verification error: %s", exc)
+        return False, f"Payment error: {exc}"
 
 
 # ---------------------------------------------------------------------------
@@ -237,13 +318,8 @@ async def _auto_register_with_catalog(api: ProxiedAPI, proxy_url: str) -> None:
         log.debug("Catalog registration skipped: %s", exc)
 
 
-async def _post_call_tasks(
-    api_id: str, payment_header: str, price_usd: float, resource_url: str
-) -> None:
-    """Fire-and-forget: settle payment + update stats."""
-    settle_result = await _settle_payment(payment_header, price_usd, resource_url)
-    log.info("Settle result for %s: %s", api_id, settle_result.get("settled"))
-
+async def _post_call_tasks(api_id: str, price_usd: float) -> None:
+    """Fire-and-forget: update stats after a successful paid call."""
     if api_id in APIS:
         APIS[api_id].total_calls += 1
         APIS[api_id].total_revenue_usd += price_usd
@@ -371,8 +447,9 @@ async def _proxy_request(
     if not payment_header:
         return _payment_required_response(api_id, api.price_usd, request)
 
-    valid, reason = await _verify_payment(payment_header, api_id, api.price_usd)
+    valid, reason = await _verify_and_settle_payment(payment_header, api.price_usd)
     if not valid:
+        log.info("Payment rejected for %s: %s", api_id, reason)
         return _payment_required_response(api_id, api.price_usd, request)
 
     # --- build upstream request ---
@@ -426,9 +503,7 @@ async def _proxy_request(
         )
 
     # --- fire-and-forget post-call tasks ---
-    asyncio.ensure_future(
-        _post_call_tasks(api_id, payment_header, api.price_usd, str(request.url))
-    )
+    asyncio.ensure_future(_post_call_tasks(api_id, api.price_usd))
 
     # --- relay upstream response ---
     excluded_headers = {"content-encoding", "transfer-encoding", "connection"}
