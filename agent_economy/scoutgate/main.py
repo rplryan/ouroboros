@@ -451,7 +451,6 @@ GET https://x402-scoutgate.onrender.com/api/abc123/endpoint
     <h2>Quick links</h2>
     <div class="links">
       <a class="btn" href="/docs">API Docs</a>
-      <a class="btn" href="/stats">Stats</a>
       <a class="btn" href="https://x402scout.com">x402Scout Catalog</a>
       <a class="btn" href="https://github.com/rplryan/x402-discovery-mcp">GitHub</a>
     </div>
@@ -467,17 +466,6 @@ GET https://x402-scoutgate.onrender.com/api/abc123/endpoint
 async def health() -> dict[str, Any]:
     return {"status": "ok", "apis_registered": len(APIS), "version": "1.0.0"}
 
-
-@app.get("/stats")
-async def stats() -> dict[str, Any]:
-    total_calls = sum(a.total_calls for a in APIS.values())
-    total_revenue = sum(a.total_revenue_usd for a in APIS.values())
-    return {
-        "total_apis": len(APIS),
-        "total_calls": total_calls,
-        "total_revenue_usd": round(total_revenue, 6),
-        "version": "1.0.0",
-    }
 
 
 @app.get("/register", response_class=HTMLResponse)
