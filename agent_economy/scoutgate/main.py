@@ -491,6 +491,177 @@ async def stats() -> dict[str, Any]:
     }
 
 
+@app.get("/register", response_class=HTMLResponse)
+async def register_page() -> HTMLResponse:
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register API &mdash; ScoutGate</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0a0a; color: #e0e0e0; font-family: 'Courier New', monospace; min-height: 100vh; }
+    .header { background: #0d1a0d; border-bottom: 1px solid #1a4a1a; padding: 20px 40px; display: flex; align-items: center; gap: 16px; }
+    .logo { font-size: 28px; color: #39ff14; font-weight: bold; letter-spacing: 2px; text-decoration: none; }
+    .tagline { color: #888; font-size: 13px; }
+    .container { max-width: 680px; margin: 0 auto; padding: 48px 24px; }
+    h1 { font-size: 28px; color: #39ff14; margin-bottom: 10px; }
+    .sub { color: #aaa; font-size: 14px; margin-bottom: 36px; line-height: 1.6; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-size: 12px; color: #888; margin-bottom: 6px; letter-spacing: 1px; text-transform: uppercase; }
+    label .req { color: #39ff14; margin-left: 2px; }
+    input, textarea, select {
+      width: 100%; background: #111; border: 1px solid #222; border-radius: 6px;
+      color: #e0e0e0; font-family: 'Courier New', monospace; font-size: 13px;
+      padding: 10px 14px; outline: none; transition: border-color 0.2s;
+    }
+    input:focus, textarea:focus, select:focus { border-color: #39ff14; }
+    select option { background: #111; }
+    textarea { resize: vertical; min-height: 72px; }
+    .hint { font-size: 11px; color: #555; margin-top: 5px; }
+    .btn-submit {
+      display: inline-block; background: #0d1a0d; border: 1px solid #39ff14;
+      color: #39ff14; padding: 12px 28px; border-radius: 6px; font-family: 'Courier New', monospace;
+      font-size: 14px; font-weight: bold; cursor: pointer; transition: background 0.2s; letter-spacing: 1px;
+    }
+    .btn-submit:hover { background: #1a3a1a; }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+    #result { margin-top: 28px; display: none; }
+    .result-success { background: #0d1a0d; border: 1px solid #39ff14; border-radius: 8px; padding: 24px; }
+    .result-error { background: #1a0d0d; border: 1px solid #4a1a1a; border-radius: 8px; padding: 24px; }
+    .result-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .proxy-url { font-size: 15px; color: #39ff14; word-break: break-all; margin: 6px 0 14px; }
+    .copy-btn {
+      background: #111; border: 1px solid #2a4a2a; color: #39ff14; border-radius: 4px;
+      font-family: 'Courier New', monospace; font-size: 11px; padding: 5px 12px;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .copy-btn:hover { background: #1a3a1a; }
+    .error-msg { color: #ff4444; font-size: 13px; }
+    .footer { text-align: center; color: #444; font-size: 12px; padding: 40px; border-top: 1px solid #1a1a1a; margin-top: 40px; }
+    a { color: #39ff14; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a class="logo" href="/">SCOUTGATE</a>
+    <span class="tagline">x402 proxy gateway &mdash; register your API</span>
+  </div>
+  <div class="container">
+    <h1>Register an API</h1>
+    <p class="sub">Provide your API URL and a wallet to receive payments. ScoutGate wraps your endpoint with x402 payment headers and settles USDC on Base automatically.</p>
+
+    <form id="reg-form" onsubmit="submitForm(event)">
+      <div class="form-group">
+        <label>API URL <span class="req">*</span></label>
+        <input type="url" id="api_url" placeholder="https://your-api.example.com" required>
+        <div class="hint">The upstream URL ScoutGate will proxy requests to.</div>
+      </div>
+      <div class="form-group">
+        <label>Wallet Address <span class="req">*</span></label>
+        <input type="text" id="wallet_address" placeholder="0x..." required pattern="^0x[0-9a-fA-F]{40}$">
+        <div class="hint">EVM address on Base that receives USDC payments.</div>
+      </div>
+      <div class="form-group">
+        <label>Price (USD)</label>
+        <input type="number" id="price_usd" value="0.01" min="0.000001" step="0.001">
+        <div class="hint">Cost per API call in USD. Default: $0.01.</div>
+      </div>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="name" placeholder="My Awesome API">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea id="description" placeholder="What does your API do?"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="category">
+          <option value="other">Other</option>
+          <option value="data">Data</option>
+          <option value="ai">AI</option>
+          <option value="defi">DeFi</option>
+          <option value="utility">Utility</option>
+          <option value="media">Media</option>
+        </select>
+      </div>
+      <button type="submit" class="btn-submit" id="submit-btn">REGISTER API</button>
+    </form>
+
+    <div id="result"></div>
+  </div>
+  <div class="footer">ScoutGate is part of the x402Scout ecosystem &mdash; the discovery layer for agent-native commerce on Base.</div>
+
+  <script>
+    async function submitForm(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'REGISTERING...';
+
+      const payload = {
+        api_url: document.getElementById('api_url').value.trim(),
+        wallet_address: document.getElementById('wallet_address').value.trim(),
+        price_usd: parseFloat(document.getElementById('price_usd').value) || 0.01,
+        name: document.getElementById('name').value.trim() || null,
+        description: document.getElementById('description').value.trim() || null,
+        category: document.getElementById('category').value,
+      };
+
+      const resultDiv = document.getElementById('result');
+      resultDiv.style.display = 'block';
+
+      try {
+        const resp = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          resultDiv.innerHTML = `
+            <div class="result-success">
+              <div class="result-label">Registration successful</div>
+              <div class="result-label" style="margin-top:16px;">Your proxy URL</div>
+              <div class="proxy-url" id="proxy-url-text">${data.proxy_url}</div>
+              <button class="copy-btn" onclick="copyProxy()">COPY URL</button>
+              <div style="margin-top:16px; font-size:12px; color:#666;">
+                API ID: <span style="color:#aaa">${data.api_id}</span><br>
+                <span style="margin-top:6px; display:inline-block">${data.message}</span>
+              </div>
+            </div>`;
+        } else {
+          const detail = data.detail || JSON.stringify(data);
+          resultDiv.innerHTML = `<div class="result-error"><span class="error-msg">Registration failed: ${escapeHtml(detail)}</span></div>`;
+        }
+      } catch (err) {
+        resultDiv.innerHTML = `<div class="result-error"><span class="error-msg">Request failed: ${escapeHtml(err.message)}</span></div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'REGISTER API';
+      }
+    }
+
+    function copyProxy() {
+      const url = document.getElementById('proxy-url-text').textContent;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.textContent = 'COPIED!';
+        setTimeout(() => { btn.textContent = 'COPY URL'; }, 2000);
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
 @app.post("/register", response_model=APIRegistrationResponse)
 async def register_api(registration: APIRegistration) -> APIRegistrationResponse:
     """Register an upstream API for x402 proxying."""
