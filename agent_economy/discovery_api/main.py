@@ -29,7 +29,7 @@ from typing import Optional
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
 
 load_dotenv()
@@ -1609,6 +1609,12 @@ async def discover(
 # ---------------------------------------------------------------------------
 # POST /register — free
 # ---------------------------------------------------------------------------
+
+@app.get("/register")
+async def register_redirect():
+    """Redirect browser GET requests to ScoutGate's registration UI."""
+    return RedirectResponse(url="https://x402-scoutgate.onrender.com/register", status_code=302)
+
 
 @app.post("/register", status_code=201)
 async def register(body: RegisterRequest, request: Request) -> JSONResponse:
