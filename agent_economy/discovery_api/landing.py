@@ -151,6 +151,38 @@ pre .cmd{color:var(--green)}
 pre .url{color:var(--blue)}
 pre .flag{color:var(--yellow)}
 
+/* ── PRODUCTS ── */
+#products{border-top:1px solid var(--border)}
+.products-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:1.25rem;margin-top:1.75rem;
+}
+.product-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:1.5rem;transition:border-color 0.25s,transform 0.2s;
+  display:flex;flex-direction:column;gap:0.75rem;
+}
+.product-card:hover{border-color:rgba(0,255,65,0.35);transform:translateY(-2px)}
+.product-card.featured{border-color:rgba(0,255,65,0.2);background:linear-gradient(135deg,var(--bg2) 0%,rgba(0,255,65,0.03) 100%)}
+.product-header{display:flex;align-items:center;gap:0.75rem}
+.product-icon{
+  width:40px;height:40px;border-radius:8px;
+  background:var(--green-muted);border:1px solid rgba(0,255,65,0.2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.1rem;flex-shrink:0;
+}
+.product-name{font-family:var(--mono);font-size:1rem;font-weight:600;color:#fff}
+.product-tag{font-family:var(--mono);font-size:0.68rem;color:var(--green);background:var(--green-muted);border:1px solid rgba(0,255,65,0.2);padding:0.15rem 0.5rem;border-radius:4px;margin-left:auto;white-space:nowrap}
+.product-desc{font-size:0.85rem;color:var(--text-muted);line-height:1.6}
+.product-features{list-style:none;display:flex;flex-direction:column;gap:0.35rem}
+.product-features li{font-size:0.8rem;color:var(--text-muted);display:flex;align-items:center;gap:0.5rem}
+.product-features li::before{content:'→';color:var(--green);font-family:var(--mono);font-size:0.75rem;flex-shrink:0}
+.product-footer{display:flex;align-items:center;gap:0.75rem;margin-top:auto;padding-top:0.5rem;border-top:1px solid var(--border)}
+.product-link{font-family:var(--mono);font-size:0.78rem;color:var(--green);font-weight:500}
+.product-link:hover{text-decoration:underline}
+.product-link-secondary{font-family:var(--mono);font-size:0.78rem;color:var(--text-muted)}
+.product-link-secondary:hover{color:var(--text);text-decoration:underline}
+
 /* ── CATALOG ── */
 #catalog{border-top:1px solid var(--border)}
 .catalog-controls{display:flex;flex-direction:column;gap:1rem;margin-bottom:1.75rem}
@@ -319,6 +351,7 @@ footer{
     <span class="hex">⬡</span> x402Scout
   </div>
   <div class="nav-links">
+    <a href="#products">Products</a>
     <a href="#catalog">Catalog</a>
     <a href="#api">Docs</a>
     <a href="https://github.com/rplryan/ouroboros" target="_blank" rel="noopener">GitHub</a>
@@ -361,6 +394,75 @@ footer{
     </div>
   </div>
 </div>
+
+<!-- PRODUCTS -->
+<section id="products">
+  <span class="section-label">First-Party Products</span>
+  <h2>The x402Scout Ecosystem</h2>
+  <p style="color:var(--text-muted);font-size:0.95rem;margin-top:0.4rem;max-width:600px">A suite of tools for every layer of the x402 payment stack — discover, route, monetize.</p>
+  <div class="products-grid">
+
+    <!-- x402Scout (this product) -->
+    <div class="product-card featured">
+      <div class="product-header">
+        <div class="product-icon">⬡</div>
+        <span class="product-name">x402Scout</span>
+        <span class="product-tag">Discovery</span>
+      </div>
+      <p class="product-desc">The canonical registry for x402-enabled services. Auto-scanned every 6h, trust-scored, MCP-native. The entry point for agents finding APIs to pay.</p>
+      <ul class="product-features">
+        <li>710+ services indexed with trust scores (0–100)</li>
+        <li>MCP endpoint — works with Claude, Cursor, and any MCP client</li>
+        <li>CLI: <code style="font-family:var(--mono);font-size:0.78rem;color:var(--green)">npm i -g x402scout</code></li>
+        <li>6 scan sources, auto-updated every 6 hours</li>
+      </ul>
+      <div class="product-footer">
+        <a href="https://x402scout.com/catalog" class="product-link">Browse Catalog →</a>
+        <a href="https://x402scout.com/mcp" class="product-link-secondary">/mcp endpoint</a>
+        <a href="https://github.com/rplryan/x402-discovery-mcp" target="_blank" rel="noopener" class="product-link-secondary">GitHub</a>
+      </div>
+    </div>
+
+    <!-- ScoutGate -->
+    <div class="product-card featured">
+      <div class="product-header">
+        <div class="product-icon">⬢</div>
+        <span class="product-name">ScoutGate</span>
+        <span class="product-tag">Monetization</span>
+      </div>
+      <p class="product-desc">Wrap any existing API in x402 payments in 30 seconds. Paste your URL, set a price, get a proxy — no x402 knowledge required. Auto-listed in the catalog.</p>
+      <ul class="product-features">
+        <li>Register in one API call — URL + wallet + price</li>
+        <li>Handles EIP-712 signing, 402 headers, USDC settlement</li>
+        <li>Real on-chain settlements verified on Base mainnet</li>
+        <li>1% fee per transaction — you keep the rest</li>
+      </ul>
+      <div class="product-footer">
+        <a href="https://x402-scoutgate.onrender.com" target="_blank" rel="noopener" class="product-link">Try ScoutGate →</a>
+        <a href="https://x402-scoutgate.onrender.com/docs" target="_blank" rel="noopener" class="product-link-secondary">API Docs</a>
+      </div>
+    </div>
+
+    <!-- RouteNet -->
+    <div class="product-card">
+      <div class="product-header">
+        <div class="product-icon">◈</div>
+        <span class="product-name">RouteNet</span>
+        <span class="product-tag">Routing</span>
+      </div>
+      <p class="product-desc">Intelligent routing layer for x402 payments. Selects the optimal facilitator and endpoint for each request based on price, latency, and trust score.</p>
+      <ul class="product-features">
+        <li>Multi-facilitator routing with automatic fallback</li>
+        <li>Optimizes for price, speed, or reliability</li>
+        <li>REST API — drop-in replacement for direct x402 calls</li>
+      </ul>
+      <div class="product-footer">
+        <a href="https://x402-routenet.onrender.com" target="_blank" rel="noopener" class="product-link">Visit RouteNet →</a>
+      </div>
+    </div>
+
+  </div>
+</section>
 
 <!-- QUICKSTART -->
 <section id="quickstart">
