@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.4.0 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.4.1 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,15 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.4.1 — Discord Monitor Bot: real-time x402 keyword alerts from any Discord server to Telegram
+- **New service: Discord Monitor** (`agent_economy/discord_monitor/`) — background Discord bot that watches Base, CDP, and x402 community servers for keyword mentions
+- **Keywords monitored (13)**: x402, micropayment, facilitator, scoutgate, x402scout, agent payment, http 402, payment required, agentkit payment, stablecoin api, coinbase x402, x-402, 402 payment
+- **Alert delivery**: Telegram message with server/channel/author, content preview, direct jump link — within 2-3 seconds of the post
+- **Cooldown logic**: 5-minute per-(user, channel) cooldown to prevent alert flooding
+- **Optional Discord mirror**: Set `DISCORD_ALERT_WEBHOOK` to also forward matches to your own server
+- **Deploy as Render background worker**: No port needed, free tier compatible, startup alert to Telegram on ready
+- **`discord_monitor_main.py`** added as repo root entry point for Render
 
 ### v6.4.0 — Programmatic social media manager — X (Twitter) + Discord posting, 25-post content library, pillar-based scheduling, background auto-posting
 
