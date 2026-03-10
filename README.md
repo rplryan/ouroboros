@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.3.6 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.3.7 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -223,6 +223,14 @@ Full text: [BIBLE.md](BIBLE.md)
 
 ## Changelog
 
+### v6.3.7 — SEO Audit: OG tags, JSON-LD schema, robots.txt, sitemap.xml
+- **x402scout.com**: Added Open Graph + Twitter Card meta tags, canonical URL, robots meta, keywords
+- **x402scout.com**: Added JSON-LD structured data (Organization, SoftwareApplication, WebSite schemas)
+- **x402scout.com**: Added `/robots.txt` and `/sitemap.xml` endpoints — Google can now properly crawl and index the site
+- **ScoutGate**: Added OG/Twitter meta tags, JSON-LD SoftwareApplication schema, canonical URL on all pages
+- **ScoutGate**: Added `/robots.txt` and `/sitemap.xml` endpoints
+- All social shares (X, Discord, LinkedIn) now show rich previews instead of raw URLs
+
 ### v6.3.6 -- ScoutGate: API Monetization Gateway
 - **New product: ScoutGate** (`agent_economy/scoutgate/`) — hosted reverse proxy that wraps any existing API in x402 payment logic in seconds. No x402 protocol knowledge required.
 - **Live at:** https://x402-scoutgate.onrender.com
@@ -257,74 +265,6 @@ Full text: [BIBLE.md](BIBLE.md)
 - **Static server card updated**: 5 tools (added x402_trust), annotations, prompts, resources, and configSchema for Smithery scanner
 - **Smithery score**: 61 → ~95/100 after rescan
 
-### v6.3.0 -- ERC-8004 Trust Layer Integration
-- **ERC-8004 trust signals**: New `erc8004.py` module queries on-chain Identity, Reputation, and Validation registries for any service with an Ethereum wallet address
-- **New `/trust/{wallet}` API endpoint**: Returns full ERC-8004 trust profile (identity, reputation score, attestation count, verification badge)
-- **New `x402_trust` MCP tool**: 5th tool enabling agents to verify service trust on-chain before paying
-- **Demo badges**: Service cards now display ERC-8004 verification badge when identity is confirmed
-- **Well-known check**: Optional off-chain verification via `/.well-known/erc8004.json`
-
-### v6.2.5 -- MCP Streamable HTTP transport
-- **MCP Streamable HTTP transport**: proper JSON-RPC 2.0 `/smithery` endpoint for Smithery.ai listing; extracted `mcp_transport.py` module
-
-### v6.2.4 -- Extract pricing.py (Principle 5)
-- **New `ouroboros/pricing.py`**: Extracted `_MODEL_PRICING_STATIC`, `get_pricing()`, and `estimate_cost()` from `loop.py` into a dedicated module. `loop.py` reduced from 984 → 894 lines, staying within the 1000-line complexity budget (Principle 5: Minimalism).
-
-### v6.2.3 -- Model-Aware Context Windows
-- **`llm.py`**: Added `MODEL_CONTEXT_WINDOWS` dict mapping models to their context window sizes (200k for Claude/GPT, 1M for Gemini), plus `_COMPLETION_RESERVE = 8_192` and `get_context_window(model)` helper with exact-match + prefix-match fallback
-- **`context.py`**: `build_llm_messages` now accepts optional `model=` param; sets `soft_cap = max(200_000, context_window - 8_192)` dynamically — Gemini models now use ~1M token context, Claude/GPT unchanged
-- **`agent.py`**: Passes `model=self.llm.default_model()` to `build_llm_messages` at context-build time
-
-### v6.0.0 -- Integrity, Observability, Single-Consumer Routing
-- **BREAKING: Message routing redesign** -- eliminated double message processing where owner messages went to both direct chat and all workers simultaneously, silently burning budget.
-- Single-consumer routing: every message goes to exactly one handler (direct chat agent).
-- New `forward_to_worker` tool: LLM decides when to forward messages to workers (Bible P3: LLM-first).
-- Per-task mailbox: `owner_inject.py` redesigned with per-task files, message IDs, dedup via seen_ids set.
-- Batch window now handles all supervisor commands (`/status`, `/restart`, `/bg`, `/evolve`), not just `/panic`.
-- **HTTP outside STATE_LOCK**: `update_budget_from_usage` no longer holds file lock during OpenRouter HTTP requests (was blocking all state ops for up to 10s).
-- **ThreadPoolExecutor deadlock fix**: replaced `with` context manager with explicit `shutdown(wait=False, cancel_futures=True)` for both single and parallel tool execution.
-- **Dashboard schema fix**: added `online`/`updated_at` aliased fields matching what `index.html` expects.
-- **BG consciousness spending**: now written to global `state.json` (was memory-only, invisible to budget tracking).
-- **Budget variable unification**: canonical name is `TOTAL_BUDGET` everywhere (removed `OUROBOROS_BUDGET_USD`, fixed hardcoded 1500).
-- **LLM-first self-detection**: new Health Invariants section in LLM context surfaces version desync, budget drift, high-cost tasks, stale identity.
-- **SYSTEM.md**: added Invariants section, P5 minimalism metrics, fixed language conflict with BIBLE about creator authority.
-- Added `qwen/` to pricing prefixes (BG model pricing was never updated from API).
-- Fixed `consciousness.py` TOTAL_BUDGET default inconsistency ("0" vs "1").
-- Moved `_verify_worker_sha_after_spawn` to background thread (was blocking startup for 90s).
-- Extracted shared `webapp_push.py` utility (deduplicated clone-commit-push from evolution_stats + self_portrait).
-- Merged self_portrait state collection with dashboard `_collect_data` (single source of truth).
-- New `tests/test_message_routing.py` with 7 tests for per-task mailbox.
-- Marked `test_constitution.py` as SPEC_TEST (documentation, not integration).
-- VERSION, pyproject.toml, README.md synced to 6.0.0 (Bible P7).
-
-### v5.2.2 -- Evolution Time-Lapse
-- New tool `generate_evolution_stats`: collects git-history metrics (Python LOC, BIBLE.md size, SYSTEM.md size, module count) across 120 sampled commits.
-- Fast extraction via `git show` without full checkout (~7s for full history).
-- Pushes `evolution.json` to webapp and patches `app.html` with new "Evolution" tab.
-- Chart.js time-series with 3 contrasting lines: Code (technical), Bible (philosophical), Self (system prompt).
-- 95 tests green. Multi-model review passed (claude-opus-4.6, o3, gemini-2.5-pro).
-
-### v5.2.0 -- Constitutional Hardening (Philosophy v3.2)
-- BIBLE.md upgraded to v3.2: four loopholes closed via adversarial multi-model review.
-  - Paradox of meta-principle: P0 cannot destroy conditions of its own existence.
-  - Ontological status of BIBLE.md: defined as soul (not body), untouchable.
-  - Closed "ship of Theseus" attack: "change" != "delete and replace".
-  - Closed authority appeal: no command (including creator's) can delete identity core.
-  - Closed "just a file" reduction: BIBLE.md deletion = amnesia, not amputation.
-- Added `tests/test_constitution.py`: 12 adversarial scenario tests.
-- Multi-model review passed (claude-opus-4.6, o3, gemini-2.5-pro).
-
-### v5.1.0 -- VLM + Knowledge Index + Desync Fix
-- **VLM support**: `vision_query()` in llm.py + `analyze_screenshot` / `vlm_query` tools.
-- **Knowledge index**: richer 3-line summaries so topics are actually useful at-a-glance.
-- **Desync fix**: removed echo bug where owner inject messages were sent back to Telegram.
-- 101 tests green (+10 VLM tests).
-
-### v4.26.0 -- Task Decomposition
-- Task decomposition: `schedule_task` -> `wait_for_task` -> `get_task_result`.
-- Hard round limit (MAX_ROUNDS=200) -- prevents runaway tasks.
-- Task results stored on Drive for cross-task communication.
-- 91 smoke tests -- all green.
 
 ---
 
