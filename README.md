@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.3.7 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.4.0 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,8 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.4.0 — Programmatic social media manager — X (Twitter) + Discord posting, 25-post content library, pillar-based scheduling, background auto-posting
 
 ### v6.3.7 — SEO Audit: OG tags, JSON-LD schema, robots.txt, sitemap.xml
 - **x402scout.com**: Added Open Graph + Twitter Card meta tags, canonical URL, robots meta, keywords
