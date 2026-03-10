@@ -29,7 +29,7 @@ from typing import Optional
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request, BackgroundTasks
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
 
 load_dotenv()
@@ -3427,6 +3427,45 @@ async def serve_wordmark():
     """Serve the x402Scout wordmark (full logo with text, 512x341 PNG)."""
     from fastapi.responses import Response
     return Response(content=WORDMARK_PNG_BYTES, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+async def robots_txt():
+    return """User-agent: *
+Allow: /
+Disallow: /admin
+Sitemap: https://x402scout.com/sitemap.xml
+"""
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    from fastapi.responses import Response as FastAPIResponse
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://x402scout.com/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://x402scout.com/catalog</loc>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://x402scout.com/docs</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://x402scout.com/register</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+</urlset>"""
+    return FastAPIResponse(content=xml, media_type="application/xml")
+
 
 # ---------------------------------------------------------------------------
 # Entry point

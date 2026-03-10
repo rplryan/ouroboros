@@ -7,6 +7,25 @@ LANDING_HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>x402Scout — Discovery Layer for the x402 Agent Economy</title>
 <meta name="description" content="Find, verify, and pay for x402-enabled APIs. Built for AI agents, designed for developers.">
+<!-- OG / Social -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://x402scout.com/">
+<meta property="og:title" content="x402Scout — Discovery Layer for the x402 Agent Economy">
+<meta property="og:description" content="Find, verify, and pay for x402-enabled APIs. 800+ services indexed. Built for AI agents, designed for developers.">
+<meta property="og:image" content="https://x402scout.com/og-image.png">
+<meta property="og:site_name" content="x402Scout">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@x402scout11839">
+<meta name="twitter:title" content="x402Scout — Discovery Layer for the x402 Agent Economy">
+<meta name="twitter:description" content="Find, verify, and pay for x402-enabled APIs. 800+ services indexed. Built for AI agents, designed for developers.">
+<meta name="twitter:image" content="https://x402scout.com/og-image.png">
+<!-- Canonical -->
+<link rel="canonical" href="https://x402scout.com/">
+<!-- Additional SEO -->
+<meta name="robots" content="index, follow">
+<meta name="author" content="x402Scout">
+<meta name="keywords" content="x402, API discovery, AI agents, micropayments, HTTP 402, agent economy, MCP, Base blockchain, USDC, web monetization">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -342,6 +361,49 @@ footer{
   .stat-num{font-size:1.5rem}
 }
 </style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://x402scout.com/#organization",
+      "name": "x402Scout",
+      "url": "https://x402scout.com",
+      "logo": "https://x402scout.com/og-image.png",
+      "sameAs": ["https://twitter.com/x402scout11839", "https://github.com/rplryan/x402-discovery-mcp"]
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://x402scout.com/#app",
+      "name": "x402Scout",
+      "description": "Service discovery and indexing layer for the x402 agent economy. 800+ x402-compatible APIs indexed, with trust scoring and MCP integration.",
+      "url": "https://x402scout.com",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "description": "Free discovery API"
+      },
+      "publisher": {
+        "@id": "https://x402scout.com/#organization"
+      }
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://x402scout.com/#website",
+      "url": "https://x402scout.com",
+      "name": "x402Scout",
+      "description": "Discovery Layer for the x402 Agent Economy",
+      "publisher": {
+        "@id": "https://x402scout.com/#organization"
+      }
+    }
+  ]
+}
+</script>
 </head>
 <body>
 

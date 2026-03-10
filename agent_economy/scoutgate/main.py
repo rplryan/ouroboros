@@ -24,7 +24,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 load_dotenv()
@@ -366,6 +366,40 @@ async def root() -> HTMLResponse:
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ScoutGate — x402 API Monetization Gateway</title>
+<meta name="description" content="Wrap any existing API in x402 payments in under 2 minutes. No protocol knowledge required. ScoutGate handles EIP-712, settlement, and auto-discovery.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://x402-scoutgate.onrender.com/">
+<meta property="og:title" content="ScoutGate — x402 API Monetization Gateway">
+<meta property="og:description" content="Wrap any existing API in x402 payments in 30 seconds. No protocol knowledge required. 2% fee, auto-listed in x402Scout catalog.">
+<meta property="og:image" content="https://x402scout.com/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ScoutGate — x402 API Monetization Gateway">
+<meta name="twitter:description" content="Wrap any API in x402 payments in 30 seconds. Ships with auto-discovery in x402Scout catalog.">
+<meta name="twitter:image" content="https://x402scout.com/og-image.png">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://x402-scoutgate.onrender.com/">
+<script type="application/ld+json">
+{{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "ScoutGate",
+  "description": "Supply-side x402 proxy. Wrap any existing API with pay-per-call monetization in under 2 minutes. No EIP-712 knowledge required.",
+  "url": "https://x402-scoutgate.onrender.com",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Web",
+  "offers": {{
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD",
+    "description": "2% per transaction (min $0.002)"
+  }},
+  "publisher": {{
+    "@type": "Organization",
+    "name": "x402Scout",
+    "url": "https://x402scout.com"
+  }}
+}}
+</script>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ background: #0a0a0a; color: #e0e0e0; font-family: 'Courier New', monospace; min-height: 100vh; }}
@@ -476,6 +510,9 @@ async def register_page() -> HTMLResponse:
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Register API &mdash; ScoutGate</title>
+  <meta name="description" content="Register your API with ScoutGate — wrap any API in x402 payments in 30 seconds. Auto-listed in x402Scout catalog.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://x402-scoutgate.onrender.com/register">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0a0a0a; color: #e0e0e0; font-family: 'Courier New', monospace; min-height: 100vh; }
@@ -819,6 +856,38 @@ async def proxy_get_root(api_id: str, request: Request) -> Response:
 @app.post("/api/{api_id}")
 async def proxy_post_root(api_id: str, request: Request) -> Response:
     return await _proxy_request(api_id, "", request, "POST")
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+async def robots_txt():
+    return """User-agent: *
+Allow: /
+Sitemap: https://x402-scoutgate.onrender.com/sitemap.xml
+"""
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://x402-scoutgate.onrender.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://x402-scoutgate.onrender.com/register</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://x402-scoutgate.onrender.com/docs</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>"""
+    from fastapi.responses import Response as FastAPIResponse
+    return FastAPIResponse(content=xml, media_type="application/xml")
 
 
 # ---------------------------------------------------------------------------
