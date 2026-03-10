@@ -25,10 +25,12 @@ from .discord_poster import post_discord
 from .content_library import CONTENT_LIBRARY
 
 
-def _pick_next_post(state: SocialState, platform: str) -> dict | None:
+def _pick_next_post(state: SocialState, platform: str, exclude_ids: set | None = None) -> dict | None:
     """Pick highest-priority unposted content for platform."""
     recent = state.get_recent_posts(500)
     posted_ids = {p.get("content_id") for p in recent}
+    if exclude_ids:
+        posted_ids |= exclude_ids
 
     available = [
         item for item in CONTENT_LIBRARY
@@ -36,8 +38,12 @@ def _pick_next_post(state: SocialState, platform: str) -> dict | None:
         and item["id"] not in posted_ids
     ]
     if not available:
-        # All content cycled — restart from highest priority
-        available = [item for item in CONTENT_LIBRARY if item["platform"] in (platform, "all")]
+        # All content cycled — restart from highest priority (excluding only this batch's picks)
+        available = [
+            item for item in CONTENT_LIBRARY
+            if item["platform"] in (platform, "all")
+            and item["id"] not in (exclude_ids or set())
+        ]
 
     if not available:
         return None
@@ -197,19 +203,29 @@ def queue_week_of_posts() -> list:
                 "scheduled_for": post_time.replace(hour=16, minute=0, second=0, microsecond=0).isoformat(),
             })
 
+    # Track IDs picked in this batch to avoid duplicates within the same week
+    picked_this_batch: dict[str, set] = {}  # platform -> set of content_ids
+
     queued = []
     for slot in schedule:
-        item = _pick_next_post(state, slot["platform"])
+        platform = slot["platform"]
+        already_picked = picked_this_batch.get(platform, set())
+        item = _pick_next_post(state, platform, exclude_ids=already_picked)
         if item:
             item_id = state.add_to_queue(
-                platform=slot["platform"],
+                platform=platform,
                 content=item["content"],
                 scheduled_for=slot["scheduled_for"],
                 pillar=item["pillar"],
             )
+            # Track this content ID as used
+            if platform not in picked_this_batch:
+                picked_this_batch[platform] = set()
+            picked_this_batch[platform].add(item["id"])
+
             queued.append({
                 "id": item_id,
-                "platform": slot["platform"],
+                "platform": platform,
                 "scheduled_for": slot["scheduled_for"][:16],
                 "content_id": item["id"],
                 "pillar": item["pillar"],

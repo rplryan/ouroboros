@@ -110,6 +110,14 @@ except Exception as e:
 
 OPENAI_API_KEY = get_secret("OPENAI_API_KEY", default="")
 ANTHROPIC_API_KEY = get_secret("ANTHROPIC_API_KEY", default="")
+# Social media credentials (optional — used by social_media_tool)
+X_CONSUMER_KEY = get_secret("X_CONSUMER_KEY", default="")
+X_CONSUMER_SECRET = get_secret("X_CONSUMER_SECRET", default="")
+X_ACCESS_TOKEN = get_secret("X_ACCESS_TOKEN", default="")
+X_ACCESS_TOKEN_SECRET = get_secret("X_ACCESS_TOKEN_SECRET", default="")
+DISCORD_WEBHOOK_CDP = get_secret("DISCORD_WEBHOOK_CDP", default="")
+DISCORD_WEBHOOK_BASE = get_secret("DISCORD_WEBHOOK_BASE", default="")
+DISCORD_WEBHOOK_X402 = get_secret("DISCORD_WEBHOOK_X402", default="")
 GITHUB_USER = get_cfg("GITHUB_USER", default=None, allow_legacy_secret=True)
 GITHUB_REPO = get_cfg("GITHUB_REPO", default=None, allow_legacy_secret=True)
 assert GITHUB_USER and str(GITHUB_USER).strip(), "GITHUB_USER not set. Add it to your config cell (see README)."
@@ -145,6 +153,21 @@ if MODEL_LIGHT:
 os.environ["OUROBOROS_DIAG_HEARTBEAT_SEC"] = str(DIAG_HEARTBEAT_SEC)
 os.environ["OUROBOROS_DIAG_SLOW_CYCLE_SEC"] = str(DIAG_SLOW_CYCLE_SEC)
 os.environ["TELEGRAM_BOT_TOKEN"] = str(TELEGRAM_BOT_TOKEN)
+# Social media env vars
+if X_CONSUMER_KEY:
+    os.environ["X_CONSUMER_KEY"] = str(X_CONSUMER_KEY)
+if X_CONSUMER_SECRET:
+    os.environ["X_CONSUMER_SECRET"] = str(X_CONSUMER_SECRET)
+if X_ACCESS_TOKEN:
+    os.environ["X_ACCESS_TOKEN"] = str(X_ACCESS_TOKEN)
+if X_ACCESS_TOKEN_SECRET:
+    os.environ["X_ACCESS_TOKEN_SECRET"] = str(X_ACCESS_TOKEN_SECRET)
+if DISCORD_WEBHOOK_CDP:
+    os.environ["DISCORD_WEBHOOK_CDP"] = str(DISCORD_WEBHOOK_CDP)
+if DISCORD_WEBHOOK_BASE:
+    os.environ["DISCORD_WEBHOOK_BASE"] = str(DISCORD_WEBHOOK_BASE)
+if DISCORD_WEBHOOK_X402:
+    os.environ["DISCORD_WEBHOOK_X402"] = str(DISCORD_WEBHOOK_X402)
 
 if str(ANTHROPIC_API_KEY or "").strip():
     ensure_claude_code_cli()
