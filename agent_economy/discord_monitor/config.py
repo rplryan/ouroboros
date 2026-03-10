@@ -1,15 +1,16 @@
 """Discord monitor configuration."""
 import os
 
-# Discord bot token (from Discord Developer Portal)
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
+# Discord user account token (NOT a bot token — selfbot)
+DISCORD_USER_TOKEN = os.environ.get("DISCORD_USER_TOKEN", "")
 
 # Telegram alerting
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_OWNER_ID", os.environ.get("TELEGRAM_CHAT_ID", ""))
 
-# Optional: your own Discord server webhook (to forward alerts there too)
-DISCORD_ALERT_WEBHOOK = os.environ.get("DISCORD_ALERT_WEBHOOK", "")
+# Optional: webhooks in YOUR OWN Discord server to mirror alerts
+DISCORD_WEBHOOK_BASE_ALERTS = os.environ.get("DISCORD_WEBHOOK_BASE_ALERTS", "")
+DISCORD_WEBHOOK_CDP_ALERTS = os.environ.get("DISCORD_WEBHOOK_CDP_ALERTS", "")
 
 # Keywords to monitor (case-insensitive)
 MONITOR_KEYWORDS = [
@@ -29,7 +30,7 @@ MONITOR_KEYWORDS = [
 ]
 
 # Server/channel filter — monitor ALL channels in these servers
-# Set to empty list to monitor ALL servers the bot is in
+# Set to empty list to monitor ALL servers the account is in
 MONITOR_SERVER_NAMES = [
     "Base",
     "CDP",

@@ -1,15 +1,17 @@
-# x402 Discord Monitor
+# x402 Discord Monitor (Selfbot)
 
 Monitors Base and CDP Discord servers for x402-related discussions and forwards alerts to Telegram instantly.
 
+This is a **selfbot** — it runs as your Discord user account (`x402scout`), not a bot application. Because it connects as a real user, it can read messages in any server that account is already a member of — no need to get bot approval from server admins.
+
 ## What it does
 
-- Joins Discord servers (Base, CDP, x402 communities)
-- Watches **all channels** for 13 x402 keywords: `x402`, `micropayment`, `facilitator`, `scoutgate`, etc.
+- Connects to Discord as the `x402scout` user account
+- Watches **all channels** in Base Discord, CDP Discord, and any other servers the account is in
+- Monitors for 13 x402 keywords: `x402`, `micropayment`, `facilitator`, `scoutgate`, etc.
 - Forwards matches to **Telegram** in real-time (< 3 seconds)
-- Optional: forwards to your own Discord webhook too
+- Optionally mirrors alerts to webhooks in your own Discord server (#base-alerts, #cdp-alerts)
 - 5-minute cooldown per user/channel to prevent alert flood
-- `!ping` health check command in any monitored channel
 
 ## Why this matters
 
@@ -17,55 +19,44 @@ When someone asks "how do I discover x402 services?" in Base Discord, you see it
 
 ## Setup
 
-### Step 1 — Create the Discord bot
+### Step 1 — Get your Discord user token
 
-1. Go to https://discord.com/developers/applications
-2. Click **New Application** → name it **"x402Scout Monitor"**
-3. Go to **Bot** tab → click **Add Bot**
-4. Under **Privileged Gateway Intents**, enable:
-   - ✅ **Message Content Intent** ← required to read message text
-5. Copy the **Bot Token** → this is your `DISCORD_BOT_TOKEN`
-6. Note your **Application ID** (Client ID) from the General Information tab
+You need the account token for the `x402scout` Discord account.
 
-### Step 2 — Invite the bot to servers
+**From browser DevTools:**
+1. Open Discord in your browser (discord.com/app) — **log in as x402scout**
+2. Open DevTools → Network tab
+3. Refresh the page and look for any request to `discord.com/api/`
+4. In the request headers, find `Authorization:` — the value is your user token
+5. It starts with something like `MTM...` (not `Bot ...`)
 
-Use this URL (replace `YOUR_CLIENT_ID`):
-```
-https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=68608&scope=bot
-```
+**Important:** Keep this token secret — it grants full access to the account.
 
-**Permissions requested (68608):**
-- Read Messages / View Channels
-- Read Message History  
-- Send Messages (for `!ping` health check)
+### Step 2 — Create alert webhooks in your own Discord server (optional)
 
-**You can only invite bots to servers where you have "Manage Server" permission.**
+If you want alerts mirrored to a Discord server you control:
 
-For Base and CDP Discord — you need to request bot access:
-- **Base Discord:** Create a support ticket in `#builder-support` or post in `#build-in-public` explaining you want to run a keyword monitor for the x402Scout project
-- **CDP Discord:** Use their developer support channel or submit via their ecosystem form
+1. In your Discord server, create two channels: `#base-alerts` and `#cdp-alerts`
+2. For each channel: **Edit Channel → Integrations → Webhooks → New Webhook → Copy URL**
+3. Set `DISCORD_WEBHOOK_BASE_ALERTS` and `DISCORD_WEBHOOK_CDP_ALERTS` to those URLs
 
-In the meantime: create your own test server, invite the bot, and verify it's working before requesting access to Base/CDP.
+This step is optional — Telegram alerts work without it.
 
 ### Step 3 — Environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DISCORD_BOT_TOKEN` | ✅ | Bot token from Discord Developer Portal |
+| `DISCORD_USER_TOKEN` | ✅ | User account token for x402scout (NOT a bot token) |
 | `TELEGRAM_BOT_TOKEN` | ✅ | Ouroboros Telegram bot token |
 | `TELEGRAM_OWNER_ID` | ✅ | Your Telegram user ID (numeric) |
-| `DISCORD_ALERT_WEBHOOK` | Optional | Your own Discord channel webhook for mirrored alerts |
-
-Add to `/root/Ouroboros/.env`:
-```
-DISCORD_BOT_TOKEN=your_token_here
-```
+| `DISCORD_WEBHOOK_BASE_ALERTS` | Optional | Webhook URL for #base-alerts in your own server |
+| `DISCORD_WEBHOOK_CDP_ALERTS` | Optional | Webhook URL for #cdp-alerts in your own server |
 
 The Telegram vars are already set from the main Ouroboros config.
 
 ### Step 4 — Deploy on Render
 
-Add as a new **Background Worker** service:
+Add as a new **Worker** service (Starter plan):
 
 | Setting | Value |
 |---------|-------|
@@ -73,11 +64,9 @@ Add as a new **Background Worker** service:
 | **Branch** | `ouroboros` |
 | **Build Command** | `pip install -r agent_economy/discord_monitor/requirements.txt` |
 | **Start Command** | `python discord_monitor_main.py` |
-| **Instance Type** | Free (background workers are fine on free tier) |
+| **Instance Type** | Starter |
 
-Add the env vars above in the Render dashboard.
-
-No port needed — this is a background worker, not a web service.
+Add the env vars above in the Render dashboard. No port needed — this is a background worker.
 
 ## Keywords monitored
 
@@ -90,10 +79,10 @@ agentkit payment, stablecoin api, coinbase x402
 ## Alert format (Telegram)
 
 ```
-🔍 x402 mention in Base #build-in-public
+👁 x402 mention in Base #build-in-public
 🏷️ Keywords: x402, micropayment
 
-👤 someuser#1234:
+👤 someuser:
 "Has anyone tried using x402 for micropayments with AgentKit? Looking for a service discovery layer..."
 
 🔗 Jump to message
@@ -102,7 +91,7 @@ agentkit payment, stablecoin api, coinbase x402
 ## Testing locally
 
 ```bash
-export DISCORD_BOT_TOKEN=your_token
+export DISCORD_USER_TOKEN=your_user_token
 export TELEGRAM_BOT_TOKEN=your_tg_token
 export TELEGRAM_OWNER_ID=your_numeric_id
 
@@ -110,4 +99,8 @@ cd /root/Ouroboros
 python discord_monitor_main.py
 ```
 
-Once running, send a message containing "x402" in any server the bot has joined. You'll get a Telegram alert within 2-3 seconds.
+Once running, send a message containing "x402" in any server the x402scout account is in. You'll get a Telegram alert within 2-3 seconds.
+
+## Note on selfbots
+
+Running a selfbot technically violates Discord's Terms of Service. This monitor is read-only and passive — it never sends messages, reacts, or interacts on behalf of the account. The account is used solely as a listening post for your own keyword alerting. Use at your own discretion.
