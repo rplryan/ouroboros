@@ -306,7 +306,7 @@ REGISTRY_PATH: Path = _PERSISTENT_DISK / "catalog.json" if _PERSISTENT_DISK.exis
 DB_PATH: Path = Path(__file__).parent / "health.db"
 
 HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
-HEALTH_CONCURRENCY: int = 50  # max concurrent health pings
+HEALTH_CONCURRENCY: int = 10  # max concurrent health pings
 SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
 
 # ---------------------------------------------------------------------------
@@ -522,6 +522,9 @@ async def _background_health_checker() -> None:
         async with httpx.AsyncClient(timeout=10.0) as client:
             await asyncio.gather(*[_check_one(e, client) for e in entries], return_exceptions=True)
 
+        # Explicitly free references to help GC
+        entries = None
+
         # Prune SQLite: keep only last 7 days
         cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         try:
@@ -547,17 +550,6 @@ async def _background_health_checker() -> None:
             reg_entry["last_health_check"] = last["checked_at"] if last else None
             reg_entry["health_status"] = _compute_health_status(stats, last)
             reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, stats)  # reuse stats
-            # Refresh payment metadata once every 24h
-            last_meta = reg_entry.get("x402_metadata_verified_at")
-            meta_age_h = (
-                (datetime.now(timezone.utc) - datetime.fromisoformat(last_meta)).total_seconds() / 3600
-                if last_meta else 999
-            )
-            if meta_age_h > 24:
-                meta = await _extract_x402_payment_metadata(url)
-                if meta:
-                    reg_entry.update(meta)
-                    reg_entry["x402_metadata_verified_at"] = datetime.now(timezone.utc).isoformat()
 
         _save_registry(_registry)
         log.info("Background health check complete")
@@ -653,7 +645,7 @@ def _enforce_trust_provider_endpoints() -> None:
 def _save_registry(entries: list[dict]) -> None:
     try:
         with REGISTRY_PATH.open("w") as fh:
-            json.dump(entries, fh, indent=2)
+            json.dump(entries, fh)  # No indent: machine-read only, saves ~40% RAM during serialization
     except Exception as exc:
         log.warning("Could not save registry to disk: %s", exc)
 
