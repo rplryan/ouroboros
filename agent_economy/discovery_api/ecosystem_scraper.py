@@ -76,6 +76,22 @@ MANUAL_SEEDS: list[dict[str, Any]] = [
         "tags": ["x402", "mcp", "relay", "discovery"],
         "github_url": "https://github.com/rplryan/x402-discovery-mcp",
     },
+    {
+        "url": "https://pypi.org/project/fast-x402/",
+        "name": "fast-x402",
+        "description": "Lightning-fast x402 payment middleware for FastAPI and ASGI apps. Accept micropayments with 3 lines of code — handles EIP-712 authorization, USDC verification, and CDP facilitator integration. pip install fast-x402",
+        "category": "utility",
+        "tags": ["x402", "python", "fastapi", "sdk", "middleware", "asgi"],
+        "github_url": "https://github.com/samthedataman/x402-sdk",
+    },
+    {
+        "url": "https://pypi.org/project/x402-langchain/",
+        "name": "x402-langchain",
+        "description": "LangChain integration for x402 micropayments. Enables LangChain agents to discover and pay for x402-gated tools and APIs automatically. pip install x402-langchain",
+        "category": "agent",
+        "tags": ["x402", "python", "langchain", "agents", "llm", "sdk"],
+        "github_url": "https://github.com/samthedataman/x402-sdk",
+    },
 ]
 
 
