@@ -1446,7 +1446,7 @@ async def add_security_headers(request: Request, call_next):
         "https://x402-scoutgate.onrender.com https://x402-routenet.onrender.com "
         "https://x402.org https://coinbase.com https://api.developer.coinbase.com; "
         "img-src 'self' data: https:; "
-        "script-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline'; "
         "frame-ancestors 'none'"
     )
