@@ -1444,6 +1444,25 @@ if _streamable_mcp_asgi is not None:
     app.mount("/mcp", _streamable_mcp_asgi)
     log.info("Streamable HTTP MCP mounted at /mcp")
 
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Content-Security-Policy: allow only trusted domains used by our app
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "connect-src 'self' https://x402scout.com https://x402-discovery-api.onrender.com "
+        "https://x402-scoutgate.onrender.com https://x402-routenet.onrender.com "
+        "https://x402.org https://coinbase.com https://api.developer.coinbase.com; "
+        "img-src 'self' data: https:; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "frame-ancestors 'none'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 # Redirect old Render URL to canonical domain
 @app.middleware("http")
 async def redirect_old_domain(request: Request, call_next):
@@ -2759,14 +2778,29 @@ async def mcp_manifest() -> JSONResponse:
                         "x402_payment": {"type": "string", "description": "x402 payment proof. Omit to get payment challenge."},
                     },
                 },
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                    "openWorldHint": False
+                }
             },
             {
                 "name": "x402_browse",
                 "description": "Browse the complete free x402 service catalog grouped by category. No payment required.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {},
+                    "properties": {
+                        "category": {"type": "string", "description": "Optional category filter: data, compute, research, agent, utility, llm, image, finance"},
+                        "limit": {"type": "integer", "description": "Max results (default 20, max 100)", "default": 20}
+                    },
                 },
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                    "openWorldHint": False
+                }
             },
             {
                 "name": "x402_health",
@@ -2778,21 +2812,33 @@ async def mcp_manifest() -> JSONResponse:
                     },
                     "required": ["service_id"],
                 },
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                    "openWorldHint": False
+                }
             },
             {
                 "name": "x402_register",
-                "description": "Register a new x402-payable service with the discovery layer. Free.",
+                "description": "Register a new x402-payable service with the discovery layer. Free. This adds your service to the public catalog so agents can discover it. Does not modify or delete any existing data.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string"},
-                        "url": {"type": "string"},
-                        "description": {"type": "string"},
-                        "price_usd": {"type": "number"},
-                        "category": {"type": "string"},
+                        "name": {"type": "string", "description": "Human-readable service name"},
+                        "url": {"type": "string", "description": "Public HTTPS URL of the x402-enabled endpoint"},
+                        "description": {"type": "string", "description": "What the service does"},
+                        "price_usd": {"type": "number", "description": "Price per API call in USD"},
+                        "category": {"type": "string", "description": "Category: data, compute, research, agent, utility, llm, image, finance"},
                     },
                     "required": ["name", "url", "description", "price_usd", "category"],
                 },
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                    "openWorldHint": True
+                }
             },
             {
                 "name": "x402_facilitator_check",
@@ -2804,6 +2850,12 @@ async def mcp_manifest() -> JSONResponse:
                         "scheme": {"type": "string", "description": "x402 payment scheme (default: 'exact')"},
                     },
                 },
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                    "openWorldHint": False
+                }
             },
         ],
         "server_url": "https://x402scout.com",
