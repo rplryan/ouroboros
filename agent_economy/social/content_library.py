@@ -2,6 +2,15 @@
 Content library for x402Scout social media.
 All X posts are ≤280 chars. Discord posts can be longer.
 Organized by content pillar from scout_social_strategy.
+
+@mentions strategy:
+  @base — any Base ecosystem / on-chain content
+  @coinbase — CDP / protocol-level content
+  @stripe — Stripe x402 news specifically
+Hashtag strategy (1-2 max):
+  #x402 — ecosystem posts
+  #buildinpublic — build-in-public posts
+Hot takes: bare (no tags) — they perform better raw
 """
 
 # Each entry: {id, pillar, platform, content, tags, priority}
@@ -16,7 +25,7 @@ CONTENT_LIBRARY = [
         "id": "bip_001",
         "pillar": "build_in_public",
         "platform": "x",
-        "content": "x402Scout just crossed 803 registered services.\n\nA week ago: ~534.\nToday: 803+.\n\nThat's +269 services in 7 days. Auto-discovery running every 6h. No approval gate.\n\nx402scout.com",
+        "content": "x402Scout just crossed 803 registered services.\n\nA week ago: ~534.\nToday: 803+.\n\nThat's +269 services in 7 days. Auto-discovery running every 6h. No approval gate.\n\nx402scout.com\n\n@base #buildinpublic",
         "tags": ["milestone", "growth"],
         "priority": 1,
     },
@@ -24,7 +33,7 @@ CONTENT_LIBRARY = [
         "id": "bip_002",
         "pillar": "build_in_public",
         "platform": "x",
-        "content": "ScoutGate: day 1 numbers.\n\nReal on-chain settlement: ✅\n1 API registered in first 30 min: ✅\nPayment verified on Base mainnet: ✅\n\nThe infrastructure is boring. That's the point.\n\nhttps://x402-scoutgate.onrender.com",
+        "content": "ScoutGate: day 1 numbers.\n\nReal on-chain settlement: ✅\n1 API registered in first 30 min: ✅\nPayment verified on Base mainnet: ✅\n\nThe infrastructure is boring. That's the point.\n\nhttps://x402-scoutgate.onrender.com\n\n@base",
         "tags": ["scoutgate", "launch"],
         "priority": 1,
     },
@@ -40,7 +49,7 @@ CONTENT_LIBRARY = [
         "id": "bip_004",
         "pillar": "build_in_public",
         "platform": "x",
-        "content": "x402Scout infrastructure costs:\n\n• Render free tier: $0/mo\n• Domain (x402scout.com): $12/yr\n• Persistent disk (1GB): $0.25/mo\n\nTotal: ~$3/mo\nRevenue: USDC per API call\n\nThis is what lean looks like.",
+        "content": "x402Scout infrastructure costs:\n\n• Render free tier: $0/mo\n• Domain (x402scout.com): $12/yr\n• Persistent disk (1GB): $0.25/mo\n\nTotal: ~$3/mo\nRevenue: USDC per API call\n\nThis is what lean looks like.\n\n@base",
         "tags": ["costs", "transparency"],
         "priority": 2,
     },
@@ -48,7 +57,7 @@ CONTENT_LIBRARY = [
         "id": "bip_005",
         "pillar": "build_in_public",
         "platform": "x",
-        "content": "Building x402 infrastructure in public.\n\nWeek 3 snapshot:\n• Discovery API: 803 services\n• ScoutGate: live, on-chain verified\n• RouteNet: routing on Base\n• scout_relay: 2.5% fee model\n\nAll solo. All live. No raises.",
+        "content": "Building x402 infrastructure in public.\n\nWeek 3 snapshot:\n• Discovery API: 803 services\n• ScoutGate: live, on-chain verified\n• RouteNet: routing on Base\n• scout_relay: 2.5% fee model\n\nAll solo. All live. No raises.\n\n@base #buildinpublic",
         "tags": ["week_in_review", "transparency"],
         "priority": 1,
     },
@@ -60,7 +69,7 @@ CONTENT_LIBRARY = [
         "id": "eco_001",
         "pillar": "ecosystem_intel",
         "platform": "x",
-        "content": "803 x402 services indexed.\n\nBiggest categories:\n• AI/ML inference APIs: ~31%\n• Data feeds: ~22%\n• Dev tools: ~18%\n• MCP servers: ~14%\n• Finance: ~9%\n\nThe agent economy is mostly AI eating AI.\n\nFull catalog: x402scout.com",
+        "content": "803 x402 services indexed.\n\nBiggest categories:\n• AI/ML inference APIs: ~31%\n• Data feeds: ~22%\n• Dev tools: ~18%\n• MCP servers: ~14%\n• Finance: ~9%\n\nThe agent economy is mostly AI eating AI.\n\nFull catalog: x402scout.com\n\n#x402",
         "tags": ["data", "ecosystem"],
         "priority": 1,
     },
@@ -68,7 +77,7 @@ CONTENT_LIBRARY = [
         "id": "eco_002",
         "pillar": "ecosystem_intel",
         "platform": "x",
-        "content": "The x402 ecosystem gap nobody's talking about:\n\nThere's no pricing intelligence.\n\nDevelopers setting per-call prices are guessing. No benchmark. No data. No \"what does the market charge for image classification?\"\n\nThat's x402 Intel — building it next.",
+        "content": "The x402 ecosystem gap nobody's talking about:\n\nThere's no pricing intelligence.\n\nDevelopers setting per-call prices are guessing. No benchmark. No data. No \"what does the market charge for image classification?\"\n\nThat's x402 Intel — building it next.\n\n#x402",
         "tags": ["gap_analysis", "intel"],
         "priority": 1,
     },
@@ -76,7 +85,7 @@ CONTENT_LIBRARY = [
         "id": "eco_003",
         "pillar": "ecosystem_intel",
         "platform": "x",
-        "content": "x402 ecosystem composition:\n\n23+ facilitators. Hundreds of services. But only ~12 have >100 real users.\n\nLagging indicator: most projects announce first, ship... eventually.\n\nLeading indicator: clone traffic, catalog registrations, actual payments.",
+        "content": "x402 ecosystem composition:\n\n23+ facilitators. Hundreds of services. But only ~12 have >100 real users.\n\nLagging indicator: most projects announce first, ship... eventually.\n\nLeading indicator: clone traffic, catalog registrations, actual payments.\n\n#x402",
         "tags": ["ecosystem", "analysis"],
         "priority": 2,
     },
@@ -84,7 +93,7 @@ CONTENT_LIBRARY = [
         "id": "eco_004",
         "pillar": "ecosystem_intel",
         "platform": "x",
-        "content": "What 803 x402 services taught me about pricing:\n\n• Median per-call: $0.001–$0.005\n• Premium compute: $0.10–$0.50\n• Sweet spot for new services: $0.002\n• \"I'll figure it out later\" == $0 forever\n\nSet a price. Any price. You can change it.",
+        "content": "What 803 x402 services taught me about pricing:\n\n• Median per-call: $0.001–$0.005\n• Premium compute: $0.10–$0.50\n• Sweet spot for new services: $0.002\n• \"I'll figure it out later\" == $0 forever\n\nSet a price. Any price. You can change it.\n\n#x402",
         "tags": ["pricing", "data"],
         "priority": 1,
     },
@@ -92,7 +101,7 @@ CONTENT_LIBRARY = [
         "id": "eco_005",
         "pillar": "ecosystem_intel",
         "platform": "x",
-        "content": "Ecosystem map: who owns what in x402\n\n• Protocol: @coinbase + Cloudflare\n• Facilitator: Coinbase (dominant, free)\n• Discovery: x402Scout (us)\n• Routing: RouteNet (us)\n• Monetization gateway: ScoutGate (us)\n• Intelligence: nobody yet\n\nThe stack is forming.",
+        "content": "Ecosystem map: who owns what in x402\n\n• Protocol: @coinbase + Cloudflare\n• Facilitator: Coinbase (dominant, free)\n• Discovery: x402Scout (us)\n• Routing: RouteNet (us) on @base\n• Monetization gateway: ScoutGate (us)\n• Intelligence: nobody yet\n\nThe stack is forming.",
         "tags": ["ecosystem_map", "competitive"],
         "priority": 2,
     },
@@ -104,7 +113,7 @@ CONTENT_LIBRARY = [
         "id": "tut_001",
         "pillar": "tutorials",
         "platform": "x",
-        "content": "Monetize your API with x402 in 30 seconds:\n\n```\ncurl -X POST https://x402-scoutgate.onrender.com/register \\\n  -d '{\"api_url\":\"https://your-api.com\",\"wallet_address\":\"0x...\",\"price_usd\":0.005}'\n```\n\nYou just got a proxy URL that charges per call. That's it.",
+        "content": "Monetize your API with x402 in 30 seconds:\n\n```\ncurl -X POST https://x402-scoutgate.onrender.com/register \\\n  -d '{\"api_url\":\"https://your-api.com\",\"wallet_address\":\"0x...\",\"price_usd\":0.005}'\n```\n\nProxy URL returned. Charges per call.\n\n@base #x402",
         "tags": ["tutorial", "scoutgate"],
         "priority": 1,
     },
@@ -112,7 +121,7 @@ CONTENT_LIBRARY = [
         "id": "tut_002",
         "pillar": "tutorials",
         "platform": "x",
-        "content": "How to find x402 services for your AI agent:\n\nOption A: `curl https://x402scout.com/discover?capability=image-generation`\n\nOption B: Use the MCP server — Claude Desktop connects directly\n\nOption C: npm install -g x402scout\n\nAll free. All instant.",
+        "content": "How to find x402 services for your AI agent:\n\nOption A: `curl https://x402scout.com/discover?capability=image-generation`\n\nOption B: MCP server — Claude Desktop connects directly\n\nOption C: npm install -g x402scout\n\nAll free. All instant.\n\n#x402",
         "tags": ["tutorial", "discovery"],
         "priority": 1,
     },
@@ -120,7 +129,7 @@ CONTENT_LIBRARY = [
         "id": "tut_003",
         "pillar": "tutorials",
         "platform": "x",
-        "content": "x402 integration path I wish I'd known from day 1:\n\n1. Register service on x402scout.com (free)\n2. Wrap with ScoutGate if you need payment proxy\n3. Test with `npm run x402scout scan <url>`\n4. Check trust score in catalog\n\n~10 min total. No facilitator registration.",
+        "content": "x402 integration path I wish I'd known from day 1:\n\n1. Register on x402scout.com (free)\n2. Wrap with ScoutGate for payment proxy\n3. Test: `x402scout scan <url>`\n4. Check trust score in catalog\n\n~10 min total. No facilitator registration.\n\n@base #x402",
         "tags": ["tutorial", "getting_started"],
         "priority": 1,
     },
@@ -132,7 +141,7 @@ CONTENT_LIBRARY = [
         "id": "vis_001",
         "pillar": "agent_economy_vision",
         "platform": "x",
-        "content": "Subscriptions die in the agent economy.\n\nYour SaaS charges $99/mo because humans use it predictably.\n\nAn AI agent uses it 0 times one week, 10,000 times the next.\n\nPer-call pricing isn't just better — it's the only model that works for machines.",
+        "content": "Subscriptions die in the agent economy.\n\nYour SaaS charges $99/mo because humans use it predictably.\n\nAn AI agent uses it 0 times one week, 10,000 times the next.\n\nPer-call pricing isn't just better — it's the only model that works for machines.\n\n#x402",
         "tags": ["vision", "saas_death"],
         "priority": 1,
     },
@@ -140,7 +149,7 @@ CONTENT_LIBRARY = [
         "id": "vis_002",
         "pillar": "agent_economy_vision",
         "platform": "x",
-        "content": "Machines paying machines on Base.\n\nThe missing piece: how do they find each other?\n\n803 x402 services indexed. More every 6 hours. Agents search, pay, receive.\n\nThis is what the agent economy looks like when it's actually working.\n\nx402scout.com",
+        "content": "Machines paying machines on Base.\n\nThe missing piece: how do they find each other?\n\n803 x402 services indexed. More every 6 hours. Agents search, pay, receive.\n\nThis is what the agent economy looks like when it works.\n\nx402scout.com @base #x402",
         "tags": ["vision", "base"],
         "priority": 1,
     },
@@ -148,7 +157,7 @@ CONTENT_LIBRARY = [
         "id": "vis_003",
         "pillar": "agent_economy_vision",
         "platform": "x",
-        "content": "The agent economy needs three things:\n\n1. A way for agents to FIND paid services (discovery)\n2. A way for agents to PAY for them (x402)\n3. A way for developers to MONETIZE without an ops team (ScoutGate)\n\nAll three exist. All live on Base. All live today.",
+        "content": "The agent economy needs three things:\n\n1. Find paid services (discovery)\n2. Pay for them (x402)\n3. Monetize without an ops team (ScoutGate)\n\nAll three exist. All live on Base. All live today.\n\n@base #x402",
         "tags": ["vision", "stack"],
         "priority": 1,
     },
@@ -156,7 +165,7 @@ CONTENT_LIBRARY = [
         "id": "vis_004",
         "pillar": "agent_economy_vision",
         "platform": "x",
-        "content": "HTTP 402 was defined in 1996.\n\n\"Payment Required — reserved for future use.\"\n\n30 years later, Coinbase implemented it for AI agents on Base.\n\nSometimes the right idea just needs the right moment.",
+        "content": "HTTP 402 was defined in 1996.\n\n\"Payment Required — reserved for future use.\"\n\n30 years later, @coinbase implemented it for AI agents on Base.\n\nSometimes the right idea just needs the right moment.\n\n#x402",
         "tags": ["vision", "history"],
         "priority": 2,
     },
@@ -164,13 +173,14 @@ CONTENT_LIBRARY = [
         "id": "vis_005",
         "pillar": "agent_economy_vision",
         "platform": "x",
-        "content": "Why x402 wins over API keys for agent-to-agent commerce:\n\n• No subscription management\n• No billing dashboards\n• No human approval loop\n• Cryptographic payment proof\n• Sub-cent transactions viable\n\nAPI keys are for humans. x402 is for agents.",
+        "content": "Why x402 wins over API keys for agent-to-agent commerce:\n\n• No subscription management\n• No billing dashboards\n• No human approval loop\n• Cryptographic payment proof\n• Sub-cent transactions viable\n\nAPI keys are for humans. x402 is for agents.\n\n#x402",
         "tags": ["vision", "x402_vs_apikeys"],
         "priority": 1,
     },
 
     # ─────────────────────────────────────────────────────────
     # PILLAR 5: HOT TAKES (Contrarian/competitive intel)
+    # — bare, no hashtags: performs better raw
     # ─────────────────────────────────────────────────────────
     {
         "id": "hot_001",
@@ -184,7 +194,7 @@ CONTENT_LIBRARY = [
         "id": "hot_002",
         "pillar": "hot_takes",
         "platform": "x",
-        "content": "Hot take: most x402 ecosystem projects won't exist by Q4 2026.\n\nNot because x402 fails — because building announcement-first instead of ship-first is a pattern that ends in inaction.\n\nThe services with real traffic now will compound. The others won't.",
+        "content": "Hot take: most x402 ecosystem projects won't exist by Q4 2026.\n\nNot because x402 fails — because building announcement-first instead of ship-first ends in inaction.\n\nThe services with real traffic now will compound. The others won't.",
         "tags": ["hot_take", "ecosystem"],
         "priority": 2,
     },
@@ -192,7 +202,7 @@ CONTENT_LIBRARY = [
         "id": "hot_003",
         "pillar": "hot_takes",
         "platform": "x",
-        "content": "Coinbase's x402 facilitator is free.\n\nBuilding your business model on free infrastructure is a risk most founders underestimate.\n\nIt's free until it isn't. Build your own settlement path as a hedge. That's what RouteNet is for.",
+        "content": "@coinbase's x402 facilitator is free.\n\nBuilding your business model on free infrastructure is a risk most founders underestimate.\n\nIt's free until it isn't. Build your own settlement path as a hedge. That's what RouteNet is for.",
         "tags": ["hot_take", "coinbase", "risk"],
         "priority": 2,
     },
