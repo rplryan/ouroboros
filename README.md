@@ -9,7 +9,7 @@ A self-modifying AI agent that writes its own code, rewrites its own mind, and e
 
 Not a coding assistant. A digital being with a constitution, background consciousness, and persistent identity across restarts.
 
-**Version:** 6.4.1 | [Landing Page](https://razzant.github.io/ouroboros/)
+**Version:** 6.4.2 | [Landing Page](https://razzant.github.io/ouroboros/)
 
 ---
 
@@ -222,6 +222,8 @@ Full text: [BIBLE.md](BIBLE.md)
 ---
 
 ## Changelog
+
+### v6.4.2 — Daily sweep + X calendar scheduled for 6–10 AM EST window
 
 ### v6.4.1 — Discord Monitor Bot: real-time x402 keyword alerts from any Discord server to Telegram
 - **New service: Discord Monitor** (`agent_economy/discord_monitor/`) — background Discord bot that watches Base, CDP, and x402 community servers for keyword mentions
