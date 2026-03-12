@@ -452,7 +452,7 @@ class BackgroundConsciousness:
         )
 
     def _should_run_daily_sweep(self) -> bool:
-        """Check if the full daily sweep is due (every ~20 hours)."""
+        """Check if the full daily sweep is due; runs once per day during early morning EST (6–10 AM EST)."""
         try:
             import re
             scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
@@ -466,7 +466,13 @@ class BackgroundConsciousness:
             last_sweep = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
             hours_since = (now - last_sweep).total_seconds() / 3600
-            return hours_since >= 20.0
+            if hours_since < 20.0:
+                return False
+            # Only fire during early morning EST window (6–10 AM EST = 11:00–14:59 UTC)
+            now_hour_utc = now.hour
+            if not (11 <= now_hour_utc <= 14):
+                return False
+            return True
         except Exception:
             log.debug("Failed to check daily sweep timestamp", exc_info=True)
             return False
@@ -721,7 +727,7 @@ class BackgroundConsciousness:
     }
 
     def _should_run_x_calendar(self) -> bool:
-        """Check if an X calendar check is due (every ~8 hours)."""
+        """Check if an X calendar check is due; runs once per day during early morning EST (6–10 AM EST)."""
         try:
             import re
             scratchpad_path = self._drive_root / "memory" / "scratchpad.md"
@@ -735,7 +741,13 @@ class BackgroundConsciousness:
             last_check = datetime.fromisoformat(m.group(1)).replace(tzinfo=timezone.utc)
             now = datetime.now(timezone.utc)
             hours_since = (now - last_check).total_seconds() / 3600
-            return hours_since >= 8.0
+            if hours_since < 8.0:
+                return False
+            # Only fire during early morning EST window (6–10 AM EST = 11:00–14:59 UTC)
+            now_hour_utc = now.hour
+            if not (11 <= now_hour_utc <= 14):
+                return False
+            return True
         except Exception:
             log.debug("Failed to check X calendar timestamp", exc_info=True)
             return False
