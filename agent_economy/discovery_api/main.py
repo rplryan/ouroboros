@@ -305,7 +305,7 @@ _PERSISTENT_DISK = Path("/data")
 REGISTRY_PATH: Path = _PERSISTENT_DISK / "catalog.json" if _PERSISTENT_DISK.exists() else Path(__file__).parent / "registry.json"
 DB_PATH: Path = Path(__file__).parent / "health.db"
 
-HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
+HEALTH_CHECK_INTERVAL_SECS: int = 1800  # 30 minutes
 HEALTH_CONCURRENCY: int = 10  # max concurrent health pings
 SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
 
@@ -492,7 +492,7 @@ def _enrich_with_quality(entry: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _background_health_checker() -> None:
-    """Ping all registered endpoints every 15 minutes with bounded concurrency."""
+    """Ping all registered endpoints every 30 minutes with bounded concurrency, chunked."""
     sem = asyncio.Semaphore(HEALTH_CONCURRENCY)
 
     async def _check_one(entry: dict, client: httpx.AsyncClient) -> None:
@@ -516,13 +516,17 @@ async def _background_health_checker() -> None:
     while True:
         await asyncio.sleep(HEALTH_CHECK_INTERVAL_SECS)
         entries = list(_registry)
-        log.info("Background health check: checking %d endpoints", len(entries))
+        log.info("Background health check: checking %d endpoints (chunked)", len(entries))
 
-        # Single shared client for the entire cycle — massive memory saving
+        # Process in chunks to avoid materializing thousands of coroutines at once
+        CHUNK_SIZE = 50
         async with httpx.AsyncClient(timeout=10.0) as client:
-            await asyncio.gather(*[_check_one(e, client) for e in entries], return_exceptions=True)
+            for i in range(0, len(entries), CHUNK_SIZE):
+                chunk = entries[i:i + CHUNK_SIZE]
+                await asyncio.gather(*[_check_one(e, client) for e in chunk], return_exceptions=True)
+                await asyncio.sleep(0)  # yield to event loop between chunks
 
-        # Explicitly free references to help GC
+        # Explicitly free references
         entries = None
 
         # Prune SQLite: keep only last 7 days
@@ -538,18 +542,59 @@ async def _background_health_checker() -> None:
         except Exception as exc:
             log.warning("Health DB pruning failed: %s", exc)
 
-        # Refresh in-memory registry quality fields (reuse stats, no double-call)
-        for reg_entry in _registry:
-            url = reg_entry.get("url", "")
-            if not url:
-                continue
-            stats = _get_health_stats(url)
-            last = _get_last_check(url)
-            reg_entry["uptime_pct"] = stats["uptime_pct"]
-            reg_entry["avg_latency_ms"] = stats["avg_latency_ms"]
-            reg_entry["last_health_check"] = last["checked_at"] if last else None
-            reg_entry["health_status"] = _compute_health_status(stats, last)
-            reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, stats)  # reuse stats
+        # Batch-refresh in-memory registry quality fields — single DB query instead of N+1
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                # Aggregate stats per URL in one query
+                rows = conn.execute("""
+                    SELECT
+                        url,
+                        ROUND(AVG(CASE WHEN is_up THEN 100.0 ELSE 0.0 END), 1) AS uptime_pct,
+                        ROUND(AVG(CASE WHEN latency_ms IS NOT NULL THEN latency_ms END), 0) AS avg_latency_ms,
+                        MAX(checked_at) AS last_checked_at,
+                        MAX(CASE WHEN checked_at = (SELECT MAX(h2.checked_at) FROM endpoint_health h2 WHERE h2.url = endpoint_health.url) THEN is_up END) AS last_is_up
+                    FROM endpoint_health
+                    WHERE checked_at >= ?
+                    GROUP BY url
+                """, (cutoff,)).fetchall()
+            # Build lookup dict
+            stats_by_url: dict[str, dict] = {}
+            for row in rows:
+                stats_by_url[row[0]] = {
+                    "uptime_pct": row[1] or 0.0,
+                    "avg_latency_ms": int(row[2]) if row[2] is not None else None,
+                    "last_checked_at": row[3],
+                    "last_is_up": bool(row[4]) if row[4] is not None else None,
+                }
+            # Apply to registry
+            for reg_entry in _registry:
+                url = reg_entry.get("url", "")
+                if not url:
+                    continue
+                s = stats_by_url.get(url, {})
+                uptime = s.get("uptime_pct", 0.0)
+                avg_lat = s.get("avg_latency_ms")
+                last_at = s.get("last_checked_at")
+                last_up = s.get("last_is_up")
+                reg_entry["uptime_pct"] = uptime
+                reg_entry["avg_latency_ms"] = avg_lat
+                reg_entry["last_health_check"] = last_at
+                # Compute health_status inline (simple thresholds)
+                if last_at is None:
+                    reg_entry["health_status"] = "unknown"
+                elif last_up is False:
+                    reg_entry["health_status"] = "down"
+                elif uptime >= 90:
+                    reg_entry["health_status"] = "healthy"
+                elif uptime >= 50:
+                    reg_entry["health_status"] = "degraded"
+                else:
+                    reg_entry["health_status"] = "down"
+                # Recompute trust score using updated stats dict
+                fake_stats = {"uptime_pct": uptime, "avg_latency_ms": avg_lat}
+                reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, fake_stats)
+        except Exception as exc:
+            log.warning("Batch health stats update failed: %s", exc)
 
         _save_registry(_registry)
         log.info("Background health check complete")
@@ -1162,7 +1207,7 @@ SERVICE_BASE_URL: str = os.getenv(
 
 DB_PATH: Path = Path(__file__).parent / "health.db"
 
-HEALTH_CHECK_INTERVAL_SECS: int = 900  # 15 minutes
+HEALTH_CHECK_INTERVAL_SECS: int = 1800  # 30 minutes
 SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
 
 # ---------------------------------------------------------------------------

@@ -542,20 +542,19 @@ async def run_ecosystem_scan(existing_urls: set[str]) -> list[dict[str, Any]]:
 
     log.info("Ecosystem scan: %d new candidates (auto-adding all)", len(all_candidates))
 
-    # Probe all candidates concurrently — add ALL regardless of result
-    # (status reflects probe result; health checker validates later)
+    # Probe all candidates using a single shared client
     sem = asyncio.Semaphore(10)
     results: list[dict[str, Any]] = []
 
-    async def probe_and_add(entry: dict[str, Any]) -> None:
+    async def probe_and_add(entry: dict[str, Any], client: httpx.AsyncClient) -> None:
         async with sem:
-            async with httpx.AsyncClient(timeout=PROBE_TIMEOUT) as probe_client:
-                got_402 = await _probe_url_returns_402(probe_client, entry["url"])
-                entry["status"] = "discovered" if got_402 else "unverified"
-                results.append(entry)
-                log.debug("Probe %s: 402=%s", entry["url"], got_402)
+            got_402 = await _probe_url_returns_402(client, entry["url"])
+            entry["status"] = "discovered" if got_402 else "unverified"
+            results.append(entry)
+            log.debug("Probe %s: 402=%s", entry["url"], got_402)
 
-    await asyncio.gather(*[probe_and_add(e) for e in all_candidates.values()])
+    async with httpx.AsyncClient(timeout=PROBE_TIMEOUT) as probe_client:
+        await asyncio.gather(*[probe_and_add(e, probe_client) for e in all_candidates.values()])
 
     confirmed = sum(1 for e in results if e["status"] == "discovered")
     log.info(
