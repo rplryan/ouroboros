@@ -57,7 +57,7 @@ CONTENT_LIBRARY = [
         "id": "bip_005",
         "pillar": "build_in_public",
         "platform": "x",
-        "content": "Building x402 infrastructure in public.\n\nWeek 3 snapshot:\n• Discovery API: 803 services\n• ScoutGate: live, on-chain verified\n• RouteNet: routing on Base\n• scout_relay: 2.5% fee model\n\nAll solo. All live. No raises.\n\n@base #buildinpublic",
+        "content": "Building x402 infrastructure in public.\n\nWeek 4 snapshot:\n• Discovery API: 1,072 services\n• ScoutGate: live, 2% fee, on-chain verified\n• RouteNet: routing on Base\n• scout_relay: MCP-native relay\n\nAll solo. All live. No raises.\n\n@base #buildinpublic",
         "tags": ["week_in_review", "transparency"],
         "priority": 1,
     },
@@ -69,7 +69,7 @@ CONTENT_LIBRARY = [
         "id": "eco_001",
         "pillar": "ecosystem_intel",
         "platform": "x",
-        "content": "803 x402 services indexed.\n\nBiggest categories:\n• AI/ML inference APIs: ~31%\n• Data feeds: ~22%\n• Dev tools: ~18%\n• MCP servers: ~14%\n• Finance: ~9%\n\nThe agent economy is mostly AI eating AI.\n\nFull catalog: x402scout.com\n\n#x402",
+        "content": "1,072 x402 services indexed.\n\nBiggest categories:\n• AI/ML inference APIs: ~31%\n• Data feeds: ~22%\n• Dev tools: ~18%\n• MCP servers: ~14%\n• Finance: ~9%\n\nThe agent economy is mostly AI eating AI.\n\nFull catalog: x402scout.com\n\n#x402",
         "tags": ["data", "ecosystem"],
         "priority": 1,
     },
@@ -93,7 +93,7 @@ CONTENT_LIBRARY = [
         "id": "eco_004",
         "pillar": "ecosystem_intel",
         "platform": "x",
-        "content": "What 803 x402 services taught me about pricing:\n\n• Median per-call: $0.001–$0.005\n• Premium compute: $0.10–$0.50\n• Sweet spot for new services: $0.002\n• \"I'll figure it out later\" == $0 forever\n\nSet a price. Any price. You can change it.\n\n#x402",
+        "content": "What 1,072 x402 services taught me about pricing:\n\n• Median per-call: $0.001–$0.005\n• Premium compute: $0.10–$0.50\n• Sweet spot for new services: $0.002\n• \"I'll figure it out later\" == $0 forever\n\nSet a price. Any price. You can change it.\n\n#x402",
         "tags": ["pricing", "data"],
         "priority": 1,
     },
@@ -149,7 +149,7 @@ CONTENT_LIBRARY = [
         "id": "vis_002",
         "pillar": "agent_economy_vision",
         "platform": "x",
-        "content": "Machines paying machines on Base.\n\nThe missing piece: how do they find each other?\n\n803 x402 services indexed. More every 6 hours. Agents search, pay, receive.\n\nThis is what the agent economy looks like when it works.\n\nx402scout.com @base #x402",
+        "content": "Machines paying machines on Base.\n\nThe missing piece: how do they find each other?\n\n1,072 x402 services indexed. More every 6 hours. Agents search, pay, receive.\n\nThis is what the agent economy looks like when it works.\n\nx402scout.com @base #x402",
         "tags": ["vision", "base"],
         "priority": 1,
     },
@@ -224,7 +224,7 @@ CONTENT_LIBRARY = [
         "platform": "discord_cdp",
         "content": (
             "## 📊 Weekly x402Scout Update\n\n"
-            "**803 services registered** in the catalog — up from ~534 last week (+50% in 7 days)\n\n"
+            "**1,072 services registered** in the catalog — up from 803 two weeks ago (+33% in 2 weeks)\n\n"
             "**ScoutGate launched** — wrap any API in x402 payments in 30 seconds. "
             "Real on-chain settlement verified on Base mainnet. https://x402-scoutgate.onrender.com\n\n"
             "**6 scan sources running** every 6h: awesome-x402, x402.org, GitHub Search, Smithery, mcp.so, and manual seeds\n\n"
@@ -264,7 +264,7 @@ CONTENT_LIBRARY = [
         "content": (
             "## x402 Ecosystem State — March 2026\n\n"
             "Things I'm tracking across the ecosystem that might be useful:\n\n"
-            "📈 **803 services** indexed in x402Scout catalog (free: https://x402scout.com/catalog)\n"
+            "📈 **1,072 services** indexed in x402Scout catalog (free: https://x402scout.com/catalog)\n"
             "🏗️ **ScoutGate** — first x402 monetization gateway with zero protocol knowledge required\n"
             "🔍 **Trust Score** — every service rated 0–100 based on uptime, compliance, security\n"
             "💡 **Gap**: pricing intelligence doesn't exist yet (nobody knows what the market charges per category)\n\n"
