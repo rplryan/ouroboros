@@ -1476,10 +1476,6 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Mount Streamable HTTP MCP ASGI app — must be before any routes
-if _streamable_mcp_asgi is not None:
-    app.mount("/mcp", _streamable_mcp_asgi)
-    log.info("Streamable HTTP MCP mounted at /mcp")
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -1893,6 +1889,21 @@ async def catalog() -> JSONResponse:
 # ---------------------------------------------------------------------------
 # GET /mcp — free, MCP tool manifest
 # ---------------------------------------------------------------------------
+
+@app.get("/mcp")
+async def mcp_info(request: Request) -> JSONResponse:
+    """MCP server information endpoint — returns server capabilities and connection info."""
+    return JSONResponse({
+        "name": "x402 Service Discovery MCP",
+        "version": "1.0",
+        "description": "Discover x402-enabled services via MCP tools",
+        "mcp_version": "2024-11-05",
+        "tools": ["discover_services", "get_service_health", "scan_service", "get_discovery_stats", "list_categories", "register_service"],
+        "transport": "streamable-http",
+        "endpoint": str(request.base_url).rstrip("/") + "/mcp",
+        "usage": "POST to this endpoint with MCP protocol messages",
+        "docs": "https://x402scout.com/docs"
+    })
 
 
 @app.get("/.well-known/x402-discovery", include_in_schema=False)
@@ -3555,6 +3566,14 @@ async def sitemap_xml():
 </urlset>"""
     return FastAPIResponse(content=xml, media_type="application/xml")
 
+
+# ---------------------------------------------------------------------------
+# Mount Streamable HTTP MCP ASGI app — after routes so GET /mcp route takes priority
+# ---------------------------------------------------------------------------
+
+if _streamable_mcp_asgi is not None:
+    app.mount("/mcp", _streamable_mcp_asgi)
+    log.info("Streamable HTTP MCP mounted at /mcp")
 
 # ---------------------------------------------------------------------------
 # Entry point
