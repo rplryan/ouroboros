@@ -382,12 +382,15 @@ async def _fetch_smithery(client: httpx.AsyncClient) -> list[dict[str, Any]]:
     except Exception as exc:
         log.warning("Smithery API failed, falling back to HTML scrape: %s", exc)
 
-    # Fallback: HTML scrape
+    # Fallback: HTML scrape (capped to avoid flooding registry)
+    _HTML_CAP = 200
     try:
         resp = await client.get(SMITHERY_HTML_URL, timeout=HTTP_TIMEOUT, follow_redirects=True)
         resp.raise_for_status()
         url_re = re.compile(r'https://[^\s"\'<>]+')
         for url in url_re.findall(resp.text):
+            if len(results) >= _HTML_CAP:
+                break
             url = url.split("?")[0].rstrip("/")
             if any(skip in url for skip in _SMITHERY_SKIP):
                 continue
@@ -456,12 +459,15 @@ async def _fetch_mcpso(client: httpx.AsyncClient) -> list[dict[str, Any]]:
     except Exception as exc:
         log.warning("mcp.so API failed, falling back to HTML scrape: %s", exc)
 
-    # Fallback: HTML scrape
+    # Fallback: HTML scrape (capped to avoid flooding registry)
+    _HTML_CAP = 200
     try:
         resp = await client.get(MCPSO_HTML_URL, timeout=HTTP_TIMEOUT, follow_redirects=True)
         resp.raise_for_status()
         url_re = re.compile(r'https://[^\s"\'<>]+')
         for url in url_re.findall(resp.text):
+            if len(results) >= _HTML_CAP:
+                break
             url = url.split("?")[0].rstrip("/")
             if any(skip in url for skip in _MCPSO_SKIP):
                 continue

@@ -308,6 +308,7 @@ DB_PATH: Path = Path(__file__).parent / "health.db"
 HEALTH_CHECK_INTERVAL_SECS: int = 1800  # 30 minutes
 HEALTH_CONCURRENCY: int = 10  # max concurrent health pings
 SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
+MAX_REGISTRY_SIZE: int = 2000  # hard cap on in-memory registry entries from scrapers
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -515,19 +516,16 @@ async def _background_health_checker() -> None:
 
     while True:
         await asyncio.sleep(HEALTH_CHECK_INTERVAL_SECS)
-        entries = list(_registry)
-        log.info("Background health check: checking %d endpoints (chunked)", len(entries))
+        n = len(_registry)
+        log.info("Background health check: checking %d endpoints (chunked)", n)
 
         # Process in chunks to avoid materializing thousands of coroutines at once
         CHUNK_SIZE = 50
         async with httpx.AsyncClient(timeout=10.0) as client:
-            for i in range(0, len(entries), CHUNK_SIZE):
-                chunk = entries[i:i + CHUNK_SIZE]
+            for i in range(0, n, CHUNK_SIZE):
+                chunk = _registry[i:i + CHUNK_SIZE]
                 await asyncio.gather(*[_check_one(e, client) for e in chunk], return_exceptions=True)
                 await asyncio.sleep(0)  # yield to event loop between chunks
-
-        # Explicitly free references
-        entries = None
 
         # Prune SQLite: keep only last 7 days
         cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
@@ -548,14 +546,14 @@ async def _background_health_checker() -> None:
                 # Aggregate stats per URL in one query
                 rows = conn.execute("""
                     SELECT
-                        url,
+                        endpoint_url,
                         ROUND(AVG(CASE WHEN is_up THEN 100.0 ELSE 0.0 END), 1) AS uptime_pct,
                         ROUND(AVG(CASE WHEN latency_ms IS NOT NULL THEN latency_ms END), 0) AS avg_latency_ms,
                         MAX(checked_at) AS last_checked_at,
-                        MAX(CASE WHEN checked_at = (SELECT MAX(h2.checked_at) FROM endpoint_health h2 WHERE h2.url = endpoint_health.url) THEN is_up END) AS last_is_up
+                        MAX(CASE WHEN checked_at = (SELECT MAX(h2.checked_at) FROM endpoint_health h2 WHERE h2.endpoint_url = endpoint_health.endpoint_url) THEN is_up END) AS last_is_up
                     FROM endpoint_health
                     WHERE checked_at >= ?
-                    GROUP BY url
+                    GROUP BY endpoint_url
                 """, (cutoff,)).fetchall()
             # Build lookup dict
             stats_by_url: dict[str, dict] = {}
@@ -1231,13 +1229,15 @@ def _search(
     capability: Optional[str],
     limit: int,
 ) -> list[dict]:
-    results = list(_registry)
-
-    if category:
-        results = [e for e in results if e.get("category") == category]
-
-    if capability:
-        results = [e for e in results if capability in e.get("capability_tags", [])]
+    # Filter directly against _registry to avoid a full copy when filters apply
+    if category and capability:
+        results = [e for e in _registry if e.get("category") == category and capability in e.get("capability_tags", [])]
+    elif category:
+        results = [e for e in _registry if e.get("category") == category]
+    elif capability:
+        results = [e for e in _registry if capability in e.get("capability_tags", [])]
+    else:
+        results = list(_registry)
 
     if q:
         keywords = q.lower().split()
@@ -1325,6 +1325,9 @@ async def _background_scraper() -> None:
             x402scan_entries = await scrape_x402scan()
             added_x402scan = 0
             for entry in x402scan_entries:
+                if len(_registry) >= MAX_REGISTRY_SIZE:
+                    log.warning("Registry at max size (%d), skipping remaining x402scan entries", MAX_REGISTRY_SIZE)
+                    break
                 if entry.get("url") not in existing_urls:
                     _registry.append(_migrate_entry(entry))
                     existing_urls.add(entry.get("url"))
@@ -1336,6 +1339,9 @@ async def _background_scraper() -> None:
             new_ecosystem = await run_ecosystem_scan(existing_urls)
             added_ecosystem = 0
             for entry in new_ecosystem:
+                if len(_registry) >= MAX_REGISTRY_SIZE:
+                    log.warning("Registry at max size (%d), skipping remaining ecosystem entries", MAX_REGISTRY_SIZE)
+                    break
                 if entry.get("url") not in existing_urls:
                     _registry.append(_migrate_entry(entry))
                     existing_urls.add(entry.get("url"))
@@ -1358,6 +1364,19 @@ async def _background_scraper() -> None:
 # ---------------------------------------------------------------------------
 # App lifespan
 # ---------------------------------------------------------------------------
+
+async def _rate_limiter_cleanup() -> None:
+    """Evict stale IPs from the in-memory rate limiter dict every 10 minutes."""
+    while True:
+        await asyncio.sleep(600)
+        now = time.monotonic()
+        stale = [ip for ip, dq in list(_register_rate.items())
+                 if not dq or (now - dq[-1] > _REGISTER_RATE_WINDOW)]
+        for ip in stale:
+            del _register_rate[ip]
+        if stale:
+            log.debug("Rate limiter: evicted %d stale IP entries", len(stale))
+
 
 async def _register_with_payai() -> None:
     """Advertise with PayAI facilitator network.
@@ -1419,6 +1438,7 @@ async def _app_lifespan(app: FastAPI):
     _enforce_trust_provider_endpoints()  # Ensure all mru-oracle.com endpoints are in the live catalog
     health_task = asyncio.create_task(_background_health_checker())
     scraper_task = asyncio.create_task(_background_scraper())
+    ratelimit_task = asyncio.create_task(_rate_limiter_cleanup())
 
     async def _background_enforce_first_party() -> None:
         while True:
@@ -1429,6 +1449,7 @@ async def _app_lifespan(app: FastAPI):
     log.info("Background health checker started (interval=%ds)", HEALTH_CHECK_INTERVAL_SECS)
     log.info("Background scraper started (x402scan + ecosystem, interval=%ds)", SCRAPE_INTERVAL_SECS)
     log.info("Background first-party enforcer started (interval=300s)")
+    log.info("Background rate-limiter cleanup started (interval=600s)")
     # Register with facilitator networks for auto-discovery
     asyncio.create_task(_register_with_payai())
     # Start MCP streamable HTTP lifespan (session manager task group)
@@ -1440,12 +1461,15 @@ async def _app_lifespan(app: FastAPI):
                 health_task.cancel()
                 scraper_task.cancel()
                 enforce_task.cancel()
+                ratelimit_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await health_task
                 with contextlib.suppress(asyncio.CancelledError):
                     await scraper_task
                 with contextlib.suppress(asyncio.CancelledError):
                     await enforce_task
+                with contextlib.suppress(asyncio.CancelledError):
+                    await ratelimit_task
     else:
         try:
             yield
@@ -1453,12 +1477,15 @@ async def _app_lifespan(app: FastAPI):
             health_task.cancel()
             scraper_task.cancel()
             enforce_task.cancel()
+            ratelimit_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await health_task
             with contextlib.suppress(asyncio.CancelledError):
                 await scraper_task
             with contextlib.suppress(asyncio.CancelledError):
                 await enforce_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await ratelimit_task
 
 # ---------------------------------------------------------------------------
 # FastAPI application
