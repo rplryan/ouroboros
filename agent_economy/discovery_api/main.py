@@ -488,6 +488,31 @@ def _enrich_with_quality(entry: dict) -> dict:
         enriched["x402_config"] = None
     return enriched
 
+
+def _enrich_from_cache(entry: dict) -> dict:
+    """Build enriched entry using only pre-cached in-memory values — NO SQLite reads.
+
+    The background health checker writes uptime_pct, avg_latency_ms, health_status,
+    and trust_score directly into each registry entry every 30 minutes.  This
+    function just adds facilitator compatibility and x402_config on top of those
+    already-present values.  Use this for bulk operations (/catalog, /discover,
+    /.well-known/x402-discovery) instead of _enrich_with_quality to avoid
+    opening thousands of SQLite connections per request.
+    """
+    enriched = dict(entry)
+    enriched = _enrich_with_facilitator(enriched)
+    if enriched.get("payment_address"):
+        enriched["x402_config"] = {
+            "payment_address": enriched.get("payment_address"),
+            "asset_contract": enriched.get("asset_contract"),
+            "x402_version": enriched.get("x402_version"),
+            "x402_network": enriched.get("x402_network"),
+            "verified_at": enriched.get("x402_metadata_verified_at"),
+        }
+    else:
+        enriched["x402_config"] = None
+    return enriched
+
 # ---------------------------------------------------------------------------
 # Background health checker
 # ---------------------------------------------------------------------------
@@ -1199,30 +1224,6 @@ def _build_how_to_use(entry: dict) -> dict:
 
     return block
 
-SERVICE_BASE_URL: str = os.getenv(
-    "SERVICE_BASE_URL", "https://x402scout.com"
-)
-
-DB_PATH: Path = Path(__file__).parent / "health.db"
-
-HEALTH_CHECK_INTERVAL_SECS: int = 1800  # 30 minutes
-SCRAPE_INTERVAL_SECS: int = 21600  # 6 hours
-
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%SZ",
-)
-log = logging.getLogger("x402-discovery")
-
-# ---------------------------------------------------------------------------
-# SQLite health DB
-# ---------------------------------------------------------------------------
-
 def _search(
     q: Optional[str],
     category: Optional[str],
@@ -1248,8 +1249,8 @@ def _search(
     else:
         results.sort(key=lambda e: (e.get("source") == "first-party", e.get("trust_score") or 0, e.get("uptime_pct") or 0, e.get("query_count") or 0), reverse=True)
 
-    # Enrich with quality signals from SQLite
-    enriched = [_enrich_with_quality(e) for e in results[:limit * 2]]
+    # Enrich using pre-cached in-memory values (background health checker keeps these fresh)
+    enriched = [_enrich_from_cache(e) for e in results[:limit * 2]]
 
     # Re-sort by quality: trust_score desc, uptime desc, latency asc, registered_at desc
     def quality_sort_key(e: dict):
@@ -1663,13 +1664,12 @@ async def discover(
 
     results = _search(q, category, None, limit)
 
-    # Increment query_count for matched entries
+    # Increment query_count for matched entries (persisted by background health checker)
     matched_ids = {e["id"] for e in results}
     try:
         for entry in _registry:
             if entry["id"] in matched_ids:
                 entry["query_count"] = entry.get("query_count", 0) + 1
-        _save_registry(_registry)
     except Exception as exc:
         log.warning("Could not update query counts: %s", exc)
 
@@ -1897,10 +1897,10 @@ async def catalog() -> JSONResponse:
         enriched = []
         for e in _registry:
             try:
-                enriched.append(_enrich_with_quality(e))
+                enriched.append(_enrich_from_cache(e))
             except Exception as enrich_err:
                 # If enrichment fails, return the raw entry rather than crashing
-                log.warning("_enrich_with_quality failed for %s: %s", e.get("url","?"), enrich_err)
+                log.warning("_enrich_from_cache failed for %s: %s", e.get("url","?"), enrich_err)
                 enriched.append(dict(e))
         enriched.sort(key=lambda x: (-(x.get("featured") or 0), -(1 if x.get("source") == "first-party" else 0), -(x.get("trust_score") or 0), -(x.get("uptime_pct") or 0), -(x.get("query_count") or 0)))
         return JSONResponse({
@@ -1937,7 +1937,7 @@ async def mcp_info(request: Request) -> JSONResponse:
 async def well_known_discovery(request: Request) -> JSONResponse:
     """RFC 5785 well-known URL — free, permanent, no payment gate.
     Returns full index in machine-readable JSON for autonomous agent consumption."""
-    all_entries = [_enrich_with_quality(e) for e in _registry]
+    all_entries = [_enrich_from_cache(e) for e in _registry]
     return JSONResponse(
         {
             "version": "1.0",
