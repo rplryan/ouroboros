@@ -61,6 +61,22 @@ CONTENT_LIBRARY = [
         "tags": ["week_in_review", "transparency"],
         "priority": 1,
     },
+    {
+        "id": "bip_week8",
+        "pillar": "build_in_public",
+        "platform": "x",
+        "content": "Week 8 x402Scout snapshot:\n\n• 1,350 services indexed (+278 since wk4)\n• ScoutGate: 36 APIs registered ✅\n• Glama MCP: live ✅\n• x402 Foundation (Linux Foundation) ✅\n\nBuilding infra for agents paying agents.\n\nx402scout.com @base #buildinpublic",
+        "tags": ["week_in_review", "transparency"],
+        "priority": 1,
+    },
+    {
+        "id": "eco_foundation",
+        "pillar": "ecosystem_intel",
+        "platform": "x",
+        "content": "The x402 Foundation just launched under Linux Foundation stewardship.\n\nMembers: AWS, Google, Microsoft, Visa, Mastercard, Stripe, Cloudflare, Shopify.\n\nHTTP 402 — reserved since 1996 — is now a Linux Foundation standard.\n\nThe agent payment stack just went enterprise.\n\n#x402",
+        "tags": ["ecosystem", "foundation", "milestone"],
+        "priority": 1,
+    },
 
     # ─────────────────────────────────────────────────────────
     # PILLAR 2: ECOSYSTEM INTEL (Maps, Gaps, Data)
