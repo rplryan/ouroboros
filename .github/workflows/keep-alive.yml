@@ -13,11 +13,11 @@ jobs:
       - name: Ping x402 Service Discovery API
         run: |
           echo "Pinging https://x402-discovery-api.onrender.com/ ..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://x402-discovery-api.onrender.com/)
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 -L https://x402-discovery-api.onrender.com/)
           echo "HTTP status: $RESPONSE"
           if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "402" ]; then
             echo "✅ Service is alive (HTTP $RESPONSE)"
           else
             echo "⚠️ Unexpected status: $RESPONSE"
-            # Not failing the job — cold start may return 5xx transiently
+            exit 1
           fi
