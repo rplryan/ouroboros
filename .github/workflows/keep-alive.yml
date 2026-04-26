@@ -9,15 +9,18 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Ping x402 Service Discovery API
         run: |
           echo "Pinging https://x402-discovery-api.onrender.com/ ..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://x402-discovery-api.onrender.com/)
+          # || true: swallow curl exit code 28 (timeout) — a slow cold start is not a failure
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 -L https://x402-discovery-api.onrender.com/ || true)
           echo "HTTP status: $RESPONSE"
           if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "402" ]; then
             echo "✅ Service is alive (HTTP $RESPONSE)"
+          elif [ -z "$RESPONSE" ] || [ "$RESPONSE" = "000" ]; then
+            echo "⏳ Service is warming up (cold start / timeout) — not a failure"
           else
-            echo "⚠️ Unexpected status: $RESPONSE"
-            # Not failing the job — cold start may return 5xx transiently
+            echo "⚠️ Unexpected status: $RESPONSE — service may be down"
           fi
