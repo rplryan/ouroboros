@@ -7,12 +7,4 @@ services:
     schedule: "*/10 * * * *"
     rootDir: agent_economy/discovery_api
     buildCommand: pip install requests
-    startCommand: >-
-      python3 -c "
-      import requests, sys;
-      try:
-        r = requests.get('https://x402-discovery-api.onrender.com/', timeout=90, allow_redirects=True);
-        print(f'keepalive: {r.status_code}')
-      except Exception as e:
-        print(f'keepalive warning: {e}', file=sys.stderr)
-      "
+    startCommand: python3 keepalive.py
