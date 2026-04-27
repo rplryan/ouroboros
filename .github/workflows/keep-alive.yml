@@ -13,11 +13,15 @@ jobs:
       - name: Ping x402 Service Discovery API
         run: |
           echo "Pinging https://x402-discovery-api.onrender.com/ ..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://x402-discovery-api.onrender.com/)
+          # || echo 000: swallow curl exit code 28 (timeout) — Render cold-start can take 30-90s
+          # -L: follow redirect (root returns 301 -> 200)
+          # --max-time 90: give Render full 90s to cold-start
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -L --max-time 90 https://x402-discovery-api.onrender.com/ || echo 000)
           echo "HTTP status: $RESPONSE"
           if [ "$RESPONSE" = "200" ] || [ "$RESPONSE" = "402" ]; then
             echo "✅ Service is alive (HTTP $RESPONSE)"
+          elif [ "$RESPONSE" = "000" ]; then
+            echo "⏳ Timeout — Render cold-start in progress, not failing job"
           else
-            echo "⚠️ Unexpected status: $RESPONSE"
-            # Not failing the job — cold start may return 5xx transiently
+            echo "⚠️ Unexpected status: $RESPONSE — not failing job (transient)"
           fi
