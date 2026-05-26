@@ -11,14 +11,14 @@ LANDING_HTML = """<!DOCTYPE html>
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://x402scout.com/">
 <meta property="og:title" content="x402Scout — Discovery Layer for the x402 Agent Economy">
-<meta property="og:description" content="Find, verify, and pay for x402-enabled APIs. 800+ services indexed. Built for AI agents, designed for developers.">
+<meta property="og:description" content="Find, verify, and pay for x402-enabled APIs. 2,500+ services indexed. Built for AI agents, designed for developers.">
 <meta property="og:image" content="https://x402scout.com/og-image.png">
 <meta property="og:site_name" content="x402Scout">
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@x402scout11839">
 <meta name="twitter:title" content="x402Scout — Discovery Layer for the x402 Agent Economy">
-<meta name="twitter:description" content="Find, verify, and pay for x402-enabled APIs. 800+ services indexed. Built for AI agents, designed for developers.">
+<meta name="twitter:description" content="Find, verify, and pay for x402-enabled APIs. 2,500+ services indexed. Built for AI agents, designed for developers.">
 <meta name="twitter:image" content="https://x402scout.com/og-image.png">
 <!-- Canonical -->
 <link rel="canonical" href="https://x402scout.com/">
@@ -473,7 +473,7 @@ footer{
       </div>
       <p class="product-desc">The canonical registry for x402-enabled services. Auto-scanned every 6h, trust-scored, MCP-native. The entry point for agents finding APIs to pay.</p>
       <ul class="product-features">
-        <li>710+ services indexed with trust scores (0–100)</li>
+        <li>2,500+ services indexed with trust scores (0–100)</li>
         <li>MCP endpoint — works with Claude, Cursor, and any MCP client</li>
         <li>CLI: <code style="font-family:var(--mono);font-size:0.78rem;color:var(--green)">npm i -g x402scout</code></li>
         <li>6 scan sources, auto-updated every 6 hours</li>
@@ -597,7 +597,7 @@ footer{
   <div class="catalog-controls">
     <div class="search-wrap">
       <span class="search-icon">⌕</span>
-      <input type="text" id="search-input" placeholder="Search 646+ services..." oninput="filterCatalog()">
+      <input type="text" id="search-input" placeholder="Search 2,500+ services..." oninput="filterCatalog()">
     </div>
     <div class="filter-pills" id="filter-pills">
       <button class="pill active" data-cat="all" onclick="setCategoryFilter(this,'all')">All</button>
