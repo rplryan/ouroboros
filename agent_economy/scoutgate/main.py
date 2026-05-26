@@ -29,6 +29,12 @@ from pydantic import BaseModel
 
 load_dotenv()
 
+# Rate limiting: max 5 registrations per IP per hour
+from collections import defaultdict
+_reg_rate: dict[str, list[float]] = defaultdict(list)
+_REG_RATE_LIMIT = 5        # max registrations per IP
+_REG_RATE_WINDOW = 3600.0  # per hour (seconds)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("scoutgate")
 
@@ -93,6 +99,9 @@ class ProxiedAPI(BaseModel):
 
 APIS: dict[str, ProxiedAPI] = {}
 
+# URL -> api_id index for deduplication
+_URL_INDEX: dict[str, str] = {}
+
 
 def _save_apis() -> None:
     try:
@@ -103,13 +112,30 @@ def _save_apis() -> None:
 
 
 def _load_apis() -> None:
-    global APIS
+    global APIS, _URL_INDEX
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE) as f:
                 data = json.load(f)
-            APIS = {k: ProxiedAPI(**v) for k, v in data.items()}
+            raw = {k: ProxiedAPI(**v) for k, v in data.items()}
+            # Deduplicate by api_url — keep oldest (registered_at ascending)
+            sorted_items = sorted(raw.items(), key=lambda x: x[1].registered_at)
+            seen_urls: dict[str, str] = {}
+            clean: dict[str, ProxiedAPI] = {}
+            for api_id, api in sorted_items:
+                norm = api.api_url.rstrip("/").lower()
+                if norm not in seen_urls:
+                    seen_urls[norm] = api_id
+                    clean[api_id] = api
+            removed = len(raw) - len(clean)
+            if removed > 0:
+                log.info("Deduplication removed %d duplicate API registrations (kept %d)", removed, len(clean))
+            APIS = clean
+            _URL_INDEX = {api.api_url.rstrip("/").lower(): api_id for api_id, api in APIS.items()}
             log.info("Loaded %d APIs from %s", len(APIS), DATA_FILE)
+            # Save cleaned data back immediately
+            if removed > 0:
+                _save_apis()
         except Exception as exc:
             log.error("Failed to load APIs from %s: %s", DATA_FILE, exc)
 
@@ -677,8 +703,31 @@ async def register_page() -> HTMLResponse:
 
 
 @app.post("/register", response_model=APIRegistrationResponse)
-async def register_api(registration: APIRegistration) -> APIRegistrationResponse:
+async def register_api(registration: APIRegistration, request: Request) -> APIRegistrationResponse:
     """Register an upstream API for x402 proxying."""
+    # Rate limiting per IP
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    window_start = now - _REG_RATE_WINDOW
+    _reg_rate[client_ip] = [t for t in _reg_rate[client_ip] if t > window_start]
+    if len(_reg_rate[client_ip]) >= _REG_RATE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded: max {_REG_RATE_LIMIT} registrations per hour per IP",
+        )
+    _reg_rate[client_ip].append(now)
+
+    # Deduplication: reject if same api_url already registered
+    norm_url = registration.api_url.rstrip("/").lower()
+    if norm_url in _URL_INDEX:
+        existing_id = _URL_INDEX[norm_url]
+        return APIRegistrationResponse(
+            api_id=existing_id,
+            proxy_url=f"https://x402-scoutgate.onrender.com/api/{existing_id}",
+            message=f"API already registered. Proxy URL: https://x402-scoutgate.onrender.com/api/{existing_id}",
+            registered_in_catalog=True,
+        )
+
     api_id = str(uuid.uuid4())[:8]
     proxy_url = f"https://x402-scoutgate.onrender.com/api/{api_id}"
 
@@ -698,6 +747,7 @@ async def register_api(registration: APIRegistration) -> APIRegistrationResponse
     )
 
     APIS[api_id] = api
+    _URL_INDEX[norm_url] = api_id
     _save_apis()
 
     # Best-effort catalog registration (non-blocking)
