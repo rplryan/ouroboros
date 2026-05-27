@@ -544,83 +544,95 @@ async def _background_health_checker() -> None:
         n = len(_registry)
         log.info("Background health check: checking %d endpoints (chunked)", n)
 
-        # Process in chunks to avoid materializing thousands of coroutines at once
-        CHUNK_SIZE = 50
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            for i in range(0, n, CHUNK_SIZE):
-                chunk = _registry[i:i + CHUNK_SIZE]
-                await asyncio.gather(*[_check_one(e, client) for e in chunk], return_exceptions=True)
-                await asyncio.sleep(0)  # yield to event loop between chunks
-
-        # Prune SQLite: keep only last 7 days
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         try:
-            with sqlite3.connect(DB_PATH) as conn:
-                deleted = conn.execute(
-                    "DELETE FROM endpoint_health WHERE checked_at < ?", (cutoff,)
-                ).rowcount
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                conn.execute("VACUUM")
-            log.info("Pruned %d old health rows", deleted)
-        except Exception as exc:
-            log.warning("Health DB pruning failed: %s", exc)
+            async with asyncio.timeout(600):  # 10 min max for a full health check cycle
+                # Process in chunks to avoid materializing thousands of coroutines at once
+                CHUNK_SIZE = 50
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    for i in range(0, n, CHUNK_SIZE):
+                        chunk = _registry[i:i + CHUNK_SIZE]
+                        try:
+                            await asyncio.wait_for(
+                                asyncio.gather(*[_check_one(e, client) for e in chunk], return_exceptions=True),
+                                timeout=30.0
+                            )
+                        except asyncio.TimeoutError:
+                            log.warning("Health check chunk %d-%d timed out (>30s), skipping", i, i + CHUNK_SIZE)
+                        await asyncio.sleep(0)  # yield to event loop between chunks
 
-        # Batch-refresh in-memory registry quality fields — single DB query instead of N+1
-        try:
-            with sqlite3.connect(DB_PATH) as conn:
-                # Aggregate stats per URL in one query
-                rows = conn.execute("""
-                    SELECT
-                        endpoint_url,
-                        ROUND(AVG(CASE WHEN is_up THEN 100.0 ELSE 0.0 END), 1) AS uptime_pct,
-                        ROUND(AVG(CASE WHEN latency_ms IS NOT NULL THEN latency_ms END), 0) AS avg_latency_ms,
-                        MAX(checked_at) AS last_checked_at,
-                        MAX(CASE WHEN checked_at = (SELECT MAX(h2.checked_at) FROM endpoint_health h2 WHERE h2.endpoint_url = endpoint_health.endpoint_url) THEN is_up END) AS last_is_up
-                    FROM endpoint_health
-                    WHERE checked_at >= ?
-                    GROUP BY endpoint_url
-                """, (cutoff,)).fetchall()
-            # Build lookup dict
-            stats_by_url: dict[str, dict] = {}
-            for row in rows:
-                stats_by_url[row[0]] = {
-                    "uptime_pct": row[1] or 0.0,
-                    "avg_latency_ms": int(row[2]) if row[2] is not None else None,
-                    "last_checked_at": row[3],
-                    "last_is_up": bool(row[4]) if row[4] is not None else None,
-                }
-            # Apply to registry
-            for reg_entry in _registry:
-                url = reg_entry.get("url", "")
-                if not url:
-                    continue
-                s = stats_by_url.get(url, {})
-                uptime = s.get("uptime_pct", 0.0)
-                avg_lat = s.get("avg_latency_ms")
-                last_at = s.get("last_checked_at")
-                last_up = s.get("last_is_up")
-                reg_entry["uptime_pct"] = uptime
-                reg_entry["avg_latency_ms"] = avg_lat
-                reg_entry["last_health_check"] = last_at
-                # Compute health_status inline (simple thresholds)
-                if last_at is None:
-                    reg_entry["health_status"] = "unknown"
-                elif last_up is False:
-                    reg_entry["health_status"] = "down"
-                elif uptime >= 90:
-                    reg_entry["health_status"] = "healthy"
-                elif uptime >= 50:
-                    reg_entry["health_status"] = "degraded"
-                else:
-                    reg_entry["health_status"] = "down"
-                # Recompute trust score using updated stats dict
-                fake_stats = {"uptime_pct": uptime, "avg_latency_ms": avg_lat}
-                reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, fake_stats)
-        except Exception as exc:
-            log.warning("Batch health stats update failed: %s", exc)
+                # Prune SQLite: keep only last 7 days
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+                try:
+                    with sqlite3.connect(DB_PATH) as conn:
+                        deleted = conn.execute(
+                            "DELETE FROM endpoint_health WHERE checked_at < ?", (cutoff,)
+                        ).rowcount
+                        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                        conn.execute("VACUUM")
+                    log.info("Pruned %d old health rows", deleted)
+                except Exception as exc:
+                    log.warning("Health DB pruning failed: %s", exc)
 
-        _save_registry(_registry)
-        log.info("Background health check complete")
+                # Batch-refresh in-memory registry quality fields — single DB query instead of N+1
+                try:
+                    with sqlite3.connect(DB_PATH) as conn:
+                        # Aggregate stats per URL in one query
+                        rows = conn.execute("""
+                            SELECT
+                                endpoint_url,
+                                ROUND(AVG(CASE WHEN is_up THEN 100.0 ELSE 0.0 END), 1) AS uptime_pct,
+                                ROUND(AVG(CASE WHEN latency_ms IS NOT NULL THEN latency_ms END), 0) AS avg_latency_ms,
+                                MAX(checked_at) AS last_checked_at,
+                                MAX(CASE WHEN checked_at = (SELECT MAX(h2.checked_at) FROM endpoint_health h2 WHERE h2.endpoint_url = endpoint_health.endpoint_url) THEN is_up END) AS last_is_up
+                            FROM endpoint_health
+                            WHERE checked_at >= ?
+                            GROUP BY endpoint_url
+                        """, (cutoff,)).fetchall()
+                    # Build lookup dict
+                    stats_by_url: dict[str, dict] = {}
+                    for row in rows:
+                        stats_by_url[row[0]] = {
+                            "uptime_pct": row[1] or 0.0,
+                            "avg_latency_ms": int(row[2]) if row[2] is not None else None,
+                            "last_checked_at": row[3],
+                            "last_is_up": bool(row[4]) if row[4] is not None else None,
+                        }
+                    # Apply to registry
+                    for reg_entry in _registry:
+                        url = reg_entry.get("url", "")
+                        if not url:
+                            continue
+                        s = stats_by_url.get(url, {})
+                        uptime = s.get("uptime_pct", 0.0)
+                        avg_lat = s.get("avg_latency_ms")
+                        last_at = s.get("last_checked_at")
+                        last_up = s.get("last_is_up")
+                        reg_entry["uptime_pct"] = uptime
+                        reg_entry["avg_latency_ms"] = avg_lat
+                        reg_entry["last_health_check"] = last_at
+                        # Compute health_status inline (simple thresholds)
+                        if last_at is None:
+                            reg_entry["health_status"] = "unknown"
+                        elif last_up is False:
+                            reg_entry["health_status"] = "down"
+                        elif uptime >= 90:
+                            reg_entry["health_status"] = "healthy"
+                        elif uptime >= 50:
+                            reg_entry["health_status"] = "degraded"
+                        else:
+                            reg_entry["health_status"] = "down"
+                        # Recompute trust score using updated stats dict
+                        fake_stats = {"uptime_pct": uptime, "avg_latency_ms": avg_lat}
+                        reg_entry["trust_score"] = _compute_trust_score_from_fields(reg_entry, fake_stats)
+                except Exception as exc:
+                    log.warning("Batch health stats update failed: %s", exc)
+
+                _save_registry(_registry)
+                log.info("Background health check complete")
+        except asyncio.TimeoutError:
+            log.warning("Health check cycle exceeded 600s — aborting this cycle to prevent deadlock")
+        except Exception as exc:
+            log.warning("Health check cycle failed: %s", exc)
 
 # ---------------------------------------------------------------------------
 # Registry helpers
@@ -1582,6 +1594,10 @@ async def enforce_first_party() -> dict:
         "enforced": True,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
+
+@app.get("/healthz", include_in_schema=False)
+async def healthz():
+    return {"status": "ok"}
 
 @app.get("/", include_in_schema=False)
 async def root(request: Request):
