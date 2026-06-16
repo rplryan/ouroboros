@@ -28,7 +28,7 @@ from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, Request, BackgroundTasks
+from fastapi import FastAPI, Query, Request, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
 
@@ -1594,6 +1594,63 @@ async def enforce_first_party() -> dict:
         "enforced": True,
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
+
+# ---------------------------------------------------------------------------
+# Admin: delete / patch a service entry
+# ---------------------------------------------------------------------------
+
+def _check_admin_auth(request: Request) -> bool:
+    """Return True if the request carries the correct admin bearer token."""
+    secret = os.environ.get("ADMIN_SECRET", "")
+    if not secret:
+        return False  # No secret configured — deny all
+    auth = request.headers.get("Authorization", "")
+    return auth == f"Bearer {secret}"
+
+
+@app.delete("/admin/service/{service_id:path}", tags=["admin"])
+async def admin_delete_service(service_id: str, request: Request) -> dict:
+    """Admin: permanently remove a service from the catalog by service_id or id."""
+    if not _check_admin_auth(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    idx = next(
+        (i for i, e in enumerate(_registry)
+         if e.get("service_id") == service_id or e.get("id") == service_id),
+        None,
+    )
+    if idx is None:
+        raise HTTPException(status_code=404, detail=f"Service not found: {service_id}")
+    removed = _registry.pop(idx)
+    _save_registry(_registry)
+    log.info("Admin deleted service: %s (%s)", service_id, removed.get("name"))
+    return {"status": "deleted", "service_id": service_id, "name": removed.get("name")}
+
+
+class AdminPatchBody(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    network: Optional[str] = None
+    price_usd: Optional[float] = None
+    status: Optional[str] = None
+
+
+@app.patch("/admin/service/{service_id:path}", tags=["admin"])
+async def admin_patch_service(service_id: str, body: AdminPatchBody, request: Request) -> dict:
+    """Admin: update fields on a catalog service by service_id or id."""
+    if not _check_admin_auth(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    entry = next(
+        (e for e in _registry
+         if e.get("service_id") == service_id or e.get("id") == service_id),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Service not found: {service_id}")
+    updates = body.model_dump(exclude_none=True)
+    entry.update(updates)
+    _save_registry(_registry)
+    log.info("Admin patched service %s: %s", service_id, updates)
+    return {"status": "updated", "service_id": service_id, "updated_fields": updates, "entry": entry}
 
 @app.get("/healthz", include_in_schema=False)
 async def healthz():
