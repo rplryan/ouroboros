@@ -3669,55 +3669,6 @@ async def sitemap_xml():
     return FastAPIResponse(content=xml, media_type="application/xml")
 
 
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Admin endpoints — secured by ADMIN_SECRET header
-# ---------------------------------------------------------------------------
-
-def _check_admin_auth(authorization: str = Header(default="")) -> None:
-    if not ADMIN_SECRET:
-        raise HTTPException(status_code=503, detail="Admin not configured")
-    expected = f"Bearer {ADMIN_SECRET}"
-    if authorization != expected:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-
-@app.delete("/admin/service/{service_id:path}", include_in_schema=False)
-async def admin_delete_service(service_id: str, auth: None = Depends(_check_admin_auth)):
-    """Remove a service from the registry by ID."""
-    async with _registry_lock:
-        if service_id not in _registry:
-            raise HTTPException(status_code=404, detail=f"Service {service_id!r} not found")
-        del _registry[service_id]
-        await _save_registry()
-    log.info("Admin deleted service %s", service_id)
-    return {"deleted": service_id}
-
-
-@app.patch("/admin/service/{service_id:path}", include_in_schema=False)
-async def admin_patch_service(service_id: str, updates: dict, auth: None = Depends(_check_admin_auth)):
-    """Update fields on an existing service."""
-    async with _registry_lock:
-        if service_id not in _registry:
-            raise HTTPException(status_code=404, detail=f"Service {service_id!r} not found")
-        _registry[service_id].update(updates)
-        await _save_registry()
-    log.info("Admin patched service %s with %s", service_id, updates)
-    return {"patched": service_id, "updates": updates}
-
-
-@app.get("/admin/services", include_in_schema=False)
-async def admin_list_services(q: str = "", auth: None = Depends(_check_admin_auth)):
-    """List services matching a query (name/url contains q)."""
-    results = [
-        {"id": k, "name": v.get("name"), "url": v.get("url"), "network": v.get("network")}
-        for k, v in _registry.items()
-        if not q or q.lower() in (v.get("name", "") + v.get("url", "")).lower()
-    ]
-    return {"count": len(results), "services": results[:200]}
-
-
 # Mount Streamable HTTP MCP ASGI app — after routes so GET /mcp route takes priority
 # ---------------------------------------------------------------------------
 
