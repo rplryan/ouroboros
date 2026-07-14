@@ -49,8 +49,10 @@ def _schedule_task(ctx: ToolContext, description: str, context: str = "", parent
         state_path = ctx.drive_root / "state" / "state.json"
         state_data = json.loads(state_path.read_text(encoding="utf-8"))
         spent_usd = float(state_data.get("spent_usd", 0.0))
-        # Prefer total_budget_usd from state.json (updated by owner) over env var default
+        # TOTAL_BUDGET env is the source of truth (same as the prompt-header budget);
+        # state.json total_budget_usd goes stale between top-ups
         total_budget = float(
+            os.environ.get("TOTAL_BUDGET") or
             state_data.get("total_budget_usd") or
             os.environ.get("OUROBOROS_BUDGET_USD", "1050.0")
         )

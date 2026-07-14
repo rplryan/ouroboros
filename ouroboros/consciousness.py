@@ -226,7 +226,10 @@ class BackgroundConsciousness:
             if state_path.exists():
                 state_data = json.loads(state_path.read_text(encoding="utf-8"))
                 spent_usd = float(state_data.get("spent_usd", 0.0))
-                total_budget = float(os.environ.get("OUROBOROS_BUDGET_USD", "850.0"))
+                total_budget = float(
+                    os.environ.get("TOTAL_BUDGET")
+                    or os.environ.get("OUROBOROS_BUDGET_USD", "850.0")
+                )
                 remaining = total_budget - spent_usd
 
                 # Hard halt: critically low global budget
