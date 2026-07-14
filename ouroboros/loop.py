@@ -808,10 +808,11 @@ def _call_llm_with_retry(
     """
     msg = None
     last_error: Optional[Exception] = None
+    working_messages = messages
 
     for attempt in range(max_retries):
         try:
-            kwargs = {"messages": messages, "model": model, "reasoning_effort": effort}
+            kwargs = {"messages": working_messages, "model": model, "reasoning_effort": effort}
             if tools:
                 kwargs["tools"] = tools
             resp_msg, usage = llm.chat(**kwargs)
@@ -837,7 +838,15 @@ def _call_llm_with_retry(
             tool_calls = msg.get("tool_calls") or []
             content = msg.get("content")
             if not tool_calls and (not content or not content.strip()):
-                log.warning("LLM returned empty response (no content, no tool_calls), attempt %d/%d", attempt + 1, max_retries)
+                # completion_tokens > 0 with no visible output = the model spent the whole
+                # turn on internal reasoning (stripped by reasoning.exclude) and stopped.
+                completion_tokens = int(usage.get("completion_tokens") or 0)
+                thinking_only = completion_tokens > 0
+                log.warning(
+                    "LLM returned empty response (no content, no tool_calls, %d completion tokens%s), attempt %d/%d",
+                    completion_tokens, " — thinking-only turn" if thinking_only else "",
+                    attempt + 1, max_retries,
+                )
 
                 # Log raw empty response for debugging
                 append_jsonl(drive_logs / "events.jsonl", {
@@ -845,12 +854,25 @@ def _call_llm_with_retry(
                     "task_id": task_id,
                     "round": round_idx, "attempt": attempt + 1,
                     "model": model,
+                    "completion_tokens": completion_tokens,
+                    "thinking_only": thinking_only,
                     "raw_content": repr(content)[:500] if content else None,
                     "raw_tool_calls": repr(tool_calls)[:500] if tool_calls else None,
                     "finish_reason": msg.get("finish_reason") or msg.get("stop_reason"),
                 })
 
                 if attempt < max_retries - 1:
+                    if thinking_only:
+                        # Resending the identical prompt tends to reproduce the same paid
+                        # thinking-only turn; nudge the model to emit output instead.
+                        working_messages = working_messages + [{
+                            "role": "user",
+                            "content": (
+                                "(Your previous turn produced only internal reasoning with no "
+                                "visible output. Do not think further — reply now with your "
+                                "answer or a tool call.)"
+                            ),
+                        }]
                     time.sleep(2 ** attempt)
                     continue
                 # Last attempt — return None to trigger "could not get response"
