@@ -764,7 +764,21 @@ async def register_api(registration: APIRegistration, request: Request) -> APIRe
 
 
 @app.get("/apis")
-async def list_apis() -> JSONResponse:
+async def list_apis(request: Request) -> JSONResponse:
+    # Hidden unless the caller presents the EXPORT_SECRET env var — used to
+    # archive the persistent-disk registrations before decommissioning.
+    secret = os.environ.get("EXPORT_SECRET", "")
+    if secret and request.headers.get("x-export-secret") == secret:
+        try:
+            with open(DATA_FILE) as fh:
+                raw = json.load(fh)
+        except Exception as exc:
+            raw = {"_error": str(exc)}
+        return JSONResponse({
+            "data_file": DATA_FILE,
+            "in_memory": {k: v.model_dump() for k, v in APIS.items()},
+            "raw_file": raw,
+        })
     raise HTTPException(status_code=404, detail="Not found")
 
 
